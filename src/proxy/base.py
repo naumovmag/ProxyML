@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any
 from fastapi import Request
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import Response
 from src.models.service import Service
+from src.models.api_key import ApiKey
 
 class AbstractProxyHandler(ABC):
     @abstractmethod
-    async def handle(self, request: Request, service: Service, path: str) -> Response:
+    async def handle(self, request: Request, service: Service, path: str, api_key: ApiKey | None = None) -> Response:
         ...
 
 class HandlerRegistry:

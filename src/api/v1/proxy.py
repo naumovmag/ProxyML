@@ -9,7 +9,7 @@ from src.models.api_key import ApiKey
 
 router = APIRouter()
 
-@router.api_route("/proxy/{slug}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@router.api_route("/{slug}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def proxy_request(
     slug: str,
     path: str,
@@ -29,4 +29,4 @@ async def proxy_request(
     if handler is None:
         raise HTTPException(status_code=500, detail="No handler for service type")
 
-    return await handler.handle(request, service, path)
+    return await handler.handle(request, service, path, api_key=api_key)

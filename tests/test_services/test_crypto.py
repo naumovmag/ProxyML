@@ -1,10 +1,12 @@
+import pytest
 from src.utils.crypto import hash_password, verify_password, generate_api_key, hash_api_key, get_key_prefix
 
 
-def test_password_hashing():
-    hashed = hash_password("test123")
-    assert verify_password("test123", hashed)
-    assert not verify_password("wrong", hashed)
+@pytest.mark.asyncio
+async def test_password_hashing():
+    hashed = await hash_password("test123")
+    assert await verify_password("test123", hashed)
+    assert not await verify_password("wrong", hashed)
 
 
 def test_api_key_generation():

@@ -18,6 +18,7 @@ dependencies = [
     "python-jose[cryptography]",
     "bcrypt",
     "python-multipart",
+    "redis>=5.0",
 ]
 
 [project.optional-dependencies]

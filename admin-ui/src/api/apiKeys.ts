@@ -23,7 +23,17 @@ export interface ApiKeyCreate {
   expires_at?: string | null
 }
 
+export interface ApiKeyUpdate {
+  name?: string
+  allowed_services?: string[] | null
+  rate_limit_rpm?: number | null
+  expires_at?: string | null
+  clear_allowed_services?: boolean
+}
+
 export const fetchApiKeys = () => api.get<ApiKey[]>('/admin/api-keys')
 export const createApiKey = (data: ApiKeyCreate) => api.post<ApiKeyCreated>('/admin/api-keys', data)
+export const updateApiKey = (id: string, data: ApiKeyUpdate) => api.put<ApiKey>(`/admin/api-keys/${id}`, data)
 export const deleteApiKey = (id: string) => api.delete(`/admin/api-keys/${id}`)
 export const toggleApiKey = (id: string) => api.patch<ApiKey>(`/admin/api-keys/${id}/toggle`)
+export const fetchKeysByService = (slug: string) => api.get<ApiKey[]>(`/admin/api-keys/by-service/${slug}`)

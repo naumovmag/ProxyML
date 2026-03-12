@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from tests.conftest import _test_service_ids, _test_key_ids
 
 
 @pytest.mark.asyncio
@@ -18,6 +19,7 @@ async def test_create_and_list_service(client: AsyncClient, admin_headers: dict)
     assert created["name"] == "Test Service"
     assert created["slug"] == "test-svc"
     service_id = created["id"]
+    _test_service_ids.append(service_id)
 
     # List
     resp = await client.get("/api/admin/services", headers=admin_headers)
@@ -36,9 +38,10 @@ async def test_create_and_list_service(client: AsyncClient, admin_headers: dict)
     assert resp.status_code == 200
     assert resp.json()["description"] == "updated"
 
-    # Delete
+    # Delete (test itself cleans up)
     resp = await client.delete(f"/api/admin/services/{service_id}", headers=admin_headers)
     assert resp.status_code == 204
+    _test_service_ids.remove(service_id)
 
 
 @pytest.mark.asyncio
@@ -49,3 +52,4 @@ async def test_create_api_key(client: AsyncClient, admin_headers: dict):
     assert "raw_key" in data
     assert data["raw_key"].startswith("pml_")
     assert data["name"] == "Test Key"
+    _test_key_ids.append(data["id"])

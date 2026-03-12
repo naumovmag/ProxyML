@@ -9,7 +9,7 @@ from src.utils.crypto import verify_password
 async def authenticate_admin(session: AsyncSession, username: str, password: str) -> AdminUser | None:
     result = await session.execute(select(AdminUser).where(AdminUser.username == username, AdminUser.is_active == True))
     user = result.scalar_one_or_none()
-    if user and verify_password(password, user.password_hash):
+    if user and await verify_password(password, user.password_hash):
         return user
     return None
 

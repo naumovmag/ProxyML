@@ -15,7 +15,7 @@ async def seed():
             return
         admin = AdminUser(
             username=settings.admin_username,
-            password_hash=hash_password(settings.admin_password),
+            password_hash=await hash_password(settings.admin_password),
         )
         session.add(admin)
         await session.commit()

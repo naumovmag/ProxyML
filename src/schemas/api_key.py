@@ -8,6 +8,13 @@ class ApiKeyCreate(BaseModel):
     rate_limit_rpm: int | None = None
     expires_at: datetime | None = None
 
+class ApiKeyUpdate(BaseModel):
+    name: str | None = None
+    allowed_services: list[str] | None = Field(default=None)
+    rate_limit_rpm: int | None = None
+    expires_at: datetime | None = None
+    clear_allowed_services: bool = False  # set True to grant access to all
+
 class ApiKeyRead(BaseModel):
     id: uuid.UUID
     name: str

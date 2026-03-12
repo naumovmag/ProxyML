@@ -2,9 +2,31 @@ import uuid
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+
+class ServiceGroupCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    description: str | None = None
+    sort_order: int = 0
+
+class ServiceGroupUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    sort_order: int | None = None
+
+class ServiceGroupRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    sort_order: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ServiceBase(BaseModel):
     name: str = Field(..., max_length=255)
     slug: str = Field(..., max_length=255, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+    group_id: uuid.UUID | None = None
     service_type: str = Field(default="custom", max_length=50)
     base_url: str
     auth_type: str = Field(default="none")
@@ -19,6 +41,8 @@ class ServiceBase(BaseModel):
     description: str | None = None
     tags: list[str] = []
     request_schema_hint: dict | None = None
+    cache_enabled: bool = False
+    cache_ttl_seconds: int = 86400
     is_active: bool = True
 
 class ServiceCreate(ServiceBase):
@@ -27,6 +51,7 @@ class ServiceCreate(ServiceBase):
 class ServiceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     slug: str | None = Field(default=None, max_length=255)
+    group_id: uuid.UUID | None = None
     service_type: str | None = None
     base_url: str | None = None
     auth_type: str | None = None
@@ -41,6 +66,8 @@ class ServiceUpdate(BaseModel):
     description: str | None = None
     tags: list[str] | None = None
     request_schema_hint: dict | None = None
+    cache_enabled: bool | None = None
+    cache_ttl_seconds: int | None = None
     is_active: bool | None = None
 
 class ServiceRead(ServiceBase):

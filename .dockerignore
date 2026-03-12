@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.pyc
+.git
+.env
+admin-ui/node_modules
+admin-ui/dist
+tests
+.pytest_cache
