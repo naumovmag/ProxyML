@@ -71,6 +71,24 @@ export interface HealthCheckResult {
   response_time_ms: number | null
 }
 
+export interface HealthReportItem {
+  service_id: string
+  service_name: string
+  slug: string
+  is_active: boolean
+  status: string
+  detail: string | null
+  response_time_ms: number | null
+}
+
+export interface HealthReport {
+  items: HealthReportItem[]
+  total: number
+  healthy: number
+  unhealthy: number
+  unconfigured: number
+}
+
 export interface ImportResult {
   groups_created: number
   groups_updated: number
@@ -90,6 +108,8 @@ export const createService = (data: ServiceCreate) => api.post<Service>('/admin/
 export const updateService = (id: string, data: Partial<ServiceCreate>) => api.put<Service>(`/admin/services/${id}`, data)
 export const deleteService = (id: string) => api.delete(`/admin/services/${id}`)
 export const checkServiceHealth = (id: string) => api.post<HealthCheckResult>(`/admin/services/${id}/check`)
+
+export const checkAllServicesHealth = () => api.post<HealthReport>('/admin/services-check-all')
 
 export const exportServices = () =>
   api.get('/admin/services-export', { responseType: 'blob' })
