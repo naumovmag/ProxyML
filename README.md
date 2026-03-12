@@ -116,9 +116,9 @@ curl -X POST 'http://localhost:8000/proxy/my-llm/v1/chat/completions' \
 ### Каталог сервисов
 
 ```
-GET /api/v1/services          # Список активных сервисов
-GET /api/v1/services/{slug}   # Детали сервиса
-GET /api/v1/health            # Health-check приложения
+GET /api/services          # Список активных сервисов
+GET /api/services/{slug}   # Детали сервиса
+GET /api/health            # Health-check приложения
 ```
 
 ### Админ API (JWT)
