@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_current_admin
 from src.services.service_registry import (
-    list_services, get_service_by_id, get_service_by_slug, create_service, update_service, delete_service
+    list_services, get_service_by_id, get_service_by_slug, create_service, update_service, delete_service,
+    FallbackValidationError,
 )
 from src.schemas.service import ServiceCreate, ServiceUpdate, ServiceRead
 from src.models.service_group import ServiceGroup
@@ -26,11 +27,17 @@ async def admin_get_service(service_id: uuid.UUID, session: AsyncSession = Depen
 
 @router.post("/services", response_model=ServiceRead, status_code=201)
 async def admin_create_service(data: ServiceCreate, session: AsyncSession = Depends(get_async_session)):
-    return await create_service(session, data)
+    try:
+        return await create_service(session, data)
+    except FallbackValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/services/{service_id}", response_model=ServiceRead)
 async def admin_update_service(service_id: uuid.UUID, data: ServiceUpdate, session: AsyncSession = Depends(get_async_session)):
-    svc = await update_service(session, service_id, data)
+    try:
+        svc = await update_service(session, service_id, data)
+    except FallbackValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
     return svc
@@ -57,6 +64,9 @@ async def export_services(session: AsyncSession = Depends(get_async_session)):
 
     # Export services
     services = await list_services(session)
+    # Build id->slug map for fallback references
+    id_to_slug = {s.id: s.slug for s in services}
+
     services_data = []
     for s in services:
         services_data.append({
@@ -79,6 +89,8 @@ async def export_services(session: AsyncSession = Depends(get_async_session)):
             "request_schema_hint": s.request_schema_hint,
             "cache_enabled": s.cache_enabled,
             "cache_ttl_seconds": s.cache_ttl_seconds,
+            "fallback_service_slug": id_to_slug.get(s.fallback_service_id) if s.fallback_service_id else None,
+            "fallback_on_statuses": s.fallback_on_statuses,
             "is_active": s.is_active,
         })
     return JSONResponse(
@@ -149,7 +161,8 @@ async def import_services(
     created = 0
     updated = 0
     errors = []
-    skip_keys = {"id", "created_at", "updated_at", "group_id", "group_name"}
+    skip_keys = {"id", "created_at", "updated_at", "group_id", "group_name", "fallback_service_slug"}
+    fallback_links: list[tuple[str, str]] = []  # (service_slug, fallback_slug)
 
     for i, item in enumerate(services_data):
         try:
@@ -166,6 +179,7 @@ async def import_services(
 
             svc_fields = {k: v for k, v in item.items() if k not in skip_keys}
             svc_fields["group_id"] = group_id
+            svc_fields.pop("fallback_service_id", None)  # will be set in second pass
 
             existing = await get_service_by_slug(session, slug)
             if existing:
@@ -176,8 +190,24 @@ async def import_services(
                 svc_data = ServiceCreate(**svc_fields)
                 await create_service(session, svc_data)
                 created += 1
+
+            # Track fallback for second pass
+            fallback_slug = item.get("fallback_service_slug")
+            if fallback_slug:
+                fallback_links.append((slug, fallback_slug))
         except Exception as e:
             errors.append(f"Item {i} (slug={item.get('slug', '?')}): {str(e)}")
+
+    # Second pass: resolve fallback references
+    for svc_slug, fb_slug in fallback_links:
+        try:
+            svc = await get_service_by_slug(session, svc_slug)
+            fb = await get_service_by_slug(session, fb_slug)
+            if svc and fb:
+                svc.fallback_service_id = fb.id
+                await session.commit()
+        except Exception as e:
+            errors.append(f"Fallback link {svc_slug} -> {fb_slug}: {str(e)}")
 
     return {
         "groups_created": groups_created,

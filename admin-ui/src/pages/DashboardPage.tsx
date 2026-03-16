@@ -288,11 +288,14 @@ export default function DashboardPage() {
                         </Badge>
                       </td>
                       <td className="py-2 pr-4 whitespace-nowrap">{log.duration_ms}ms</td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-4 space-x-1">
                         {log.is_cached ? (
                           <Badge variant="outline" className="text-xs text-green-500 border-green-500/30">cache</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">origin</span>
+                        )}
+                        {log.is_fallback && (
+                          <Badge variant="outline" className="text-xs text-orange-500 border-orange-500/30">fallback</Badge>
                         )}
                       </td>
                       <td className="py-2 text-muted-foreground">{log.api_key_name || '-'}</td>
@@ -361,6 +364,16 @@ export default function DashboardPage() {
                 <span className="text-muted-foreground">Path</span>
                 <div className="font-mono text-xs bg-muted rounded p-2 mt-1 break-all">{selectedLog.path}</div>
               </div>
+              {selectedLog.is_fallback && (
+                <div>
+                  <span className="text-muted-foreground">Fallback</span>
+                  <div className="text-sm mt-1">
+                    <Badge variant="outline" className="text-orange-500 border-orange-500/30">
+                      Fallback from {selectedLog.fallback_from_slug}
+                    </Badge>
+                  </div>
+                </div>
+              )}
               {selectedLog.error && (
                 <div>
                   <span className="text-muted-foreground">Error</span>

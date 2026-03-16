@@ -6,7 +6,7 @@ from src.models.api_key import ApiKey
 
 class AbstractProxyHandler(ABC):
     @abstractmethod
-    async def handle(self, request: Request, service: Service, path: str, api_key: ApiKey | None = None) -> Response:
+    async def handle(self, request: Request, service: Service, path: str, api_key: ApiKey | None = None, is_fallback: bool = False, fallback_from_slug: str | None = None) -> Response:
         ...
 
 class HandlerRegistry:

@@ -33,6 +33,8 @@ export interface RecentLog {
   response_size: number
   is_streaming: boolean
   is_cached: boolean
+  is_fallback: boolean
+  fallback_from_slug: string | null
   error: string | null
   created_at: string
 }

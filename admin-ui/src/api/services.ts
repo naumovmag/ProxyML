@@ -35,6 +35,8 @@ export interface Service {
   request_schema_hint: Record<string, unknown> | null
   cache_enabled: boolean
   cache_ttl_seconds: number
+  fallback_service_id: string | null
+  fallback_on_statuses: number[] | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -60,6 +62,8 @@ export interface ServiceCreate {
   request_schema_hint?: Record<string, unknown> | null
   cache_enabled?: boolean
   cache_ttl_seconds?: number
+  fallback_service_id?: string | null
+  fallback_on_statuses?: number[] | null
   is_active?: boolean
 }
 

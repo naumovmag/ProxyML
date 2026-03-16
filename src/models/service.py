@@ -28,6 +28,8 @@ class Service(Base):
     request_schema_hint: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cache_ttl_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=86400)
+    fallback_service_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("services.id", ondelete="SET NULL"), nullable=True)
+    fallback_on_statuses: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=lambda: [502, 503, 504])
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now(), onupdate=lambda: datetime.now(timezone.utc))

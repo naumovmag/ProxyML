@@ -150,6 +150,8 @@ async def stats_recent(
             "response_size": log.response_size,
             "is_streaming": log.is_streaming,
             "is_cached": log.is_cached,
+            "is_fallback": log.is_fallback,
+            "fallback_from_slug": log.fallback_from_slug,
             "error": log.error,
             "created_at": log.created_at.isoformat(),
         }

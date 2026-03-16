@@ -22,6 +22,8 @@ class RequestLog(Base):
     duration_ms: Mapped[float] = mapped_column(Float, nullable=False)
     is_streaming: Mapped[bool] = mapped_column(default=False)
     is_cached: Mapped[bool] = mapped_column(default=False)
+    is_fallback: Mapped[bool] = mapped_column(default=False, server_default="false")
+    fallback_from_slug: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),

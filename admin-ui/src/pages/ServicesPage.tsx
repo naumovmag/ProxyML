@@ -58,7 +58,8 @@ const emptyForm: ServiceCreate = {
   timeout_seconds: 120, supports_streaming: false, extra_headers: null,
   health_check_path: null, health_check_method: 'GET', description: null,
   tags: [], request_schema_hint: null, cache_enabled: false,
-  cache_ttl_seconds: 86400, is_active: true, group_id: null,
+  cache_ttl_seconds: 86400, fallback_service_id: null,
+  fallback_on_statuses: [502, 503, 504], is_active: true, group_id: null,
 }
 
 export default function ServicesPage() {
@@ -141,6 +142,7 @@ export default function ServicesPage() {
       health_check_path: s.health_check_path, health_check_method: s.health_check_method,
       description: s.description, tags: s.tags, request_schema_hint: s.request_schema_hint,
       cache_enabled: s.cache_enabled, cache_ttl_seconds: s.cache_ttl_seconds,
+      fallback_service_id: null, fallback_on_statuses: [502, 503, 504],
       is_active: s.is_active, group_id: s.group_id,
     })
     setTagsInput(s.tags.join(', '))
@@ -158,6 +160,7 @@ export default function ServicesPage() {
       health_check_path: s.health_check_path, health_check_method: s.health_check_method,
       description: s.description, tags: s.tags, request_schema_hint: s.request_schema_hint,
       cache_enabled: s.cache_enabled, cache_ttl_seconds: s.cache_ttl_seconds,
+      fallback_service_id: s.fallback_service_id, fallback_on_statuses: s.fallback_on_statuses || [502, 503, 504],
       is_active: s.is_active, group_id: s.group_id,
     })
     setTagsInput(s.tags.join(', '))
@@ -391,6 +394,7 @@ export default function ServicesPage() {
             <Badge variant="outline">{s.service_type}</Badge>
             {s.supports_streaming && <Badge variant="warning">SSE</Badge>}
             {s.cache_enabled && <Badge variant="outline">Cache</Badge>}
+            {s.fallback_service_id && <Badge variant="outline">Fallback</Badge>}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => handleCheck(s.id)} disabled={health?.loading}>
@@ -562,7 +566,14 @@ export default function ServicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Type</Label>
-                <Select value={form.service_type} onValueChange={(v) => setField('service_type', v)}>
+                <Select value={form.service_type} onValueChange={(v) => {
+                  setField('service_type', v)
+                  // Reset fallback if it's incompatible with new type
+                  if (form.fallback_service_id) {
+                    const fb = services.find((s) => s.id === form.fallback_service_id)
+                    if (fb && fb.service_type !== v) setField('fallback_service_id', null)
+                  }
+                }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SERVICE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
@@ -666,6 +677,41 @@ export default function ServicesPage() {
                 </div>
               </div>
             )}
+
+            {/* Fallback */}
+            <div className="space-y-3 rounded-md border p-4">
+              <Label className="text-sm font-medium">Fallback Service</Label>
+              <Select
+                value={form.fallback_service_id || '_none'}
+                onValueChange={(v) => setField('fallback_service_id', v === '_none' ? null : v)}
+              >
+                <SelectTrigger><SelectValue placeholder="No fallback" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">No fallback</SelectItem>
+                  {services
+                    .filter((s) => s.id !== editId && s.service_type === form.service_type)
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name} ({s.slug})</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {form.fallback_service_id && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Trigger on HTTP statuses (comma separated)</Label>
+                  <Input
+                    value={(form.fallback_on_statuses || []).join(', ')}
+                    onChange={(e) => {
+                      const statuses = e.target.value.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n))
+                      setField('fallback_on_statuses', statuses.length > 0 ? statuses : [502, 503, 504])
+                    }}
+                    placeholder="502, 503, 504"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Also triggers on connection errors and timeouts
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Check Connection inside modal */}
             <div className="rounded-md border p-4 space-y-3">

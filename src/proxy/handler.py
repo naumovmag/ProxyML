@@ -22,6 +22,8 @@ class GenericProxyHandler(AbstractProxyHandler):
         service: Service,
         path: str,
         api_key: ApiKey | None = None,
+        is_fallback: bool = False,
+        fallback_from_slug: str | None = None,
     ) -> Response:
         client = await get_http_client()
         start = time.monotonic()
@@ -58,6 +60,8 @@ class GenericProxyHandler(AbstractProxyHandler):
                     duration_ms=round(duration_ms, 1),
                     is_streaming=False,
                     is_cached=True,
+                    is_fallback=is_fallback,
+                    fallback_from_slug=fallback_from_slug,
                 )
                 resp_headers = cached["headers"]
                 resp_headers["X-ProxyML-Cache"] = "HIT"
@@ -140,6 +144,8 @@ class GenericProxyHandler(AbstractProxyHandler):
                             response_size=streamed_bytes,
                             duration_ms=round(duration_ms, 1),
                             is_streaming=True,
+                            is_fallback=is_fallback,
+                            fallback_from_slug=fallback_from_slug,
                         )
 
                 return StreamingResponse(
@@ -170,6 +176,8 @@ class GenericProxyHandler(AbstractProxyHandler):
                     response_size=len(response.content),
                     duration_ms=round(duration_ms, 1),
                     is_streaming=False,
+                    is_fallback=is_fallback,
+                    fallback_from_slug=fallback_from_slug,
                 )
 
                 response_headers = dict(response.headers)
@@ -205,6 +213,8 @@ class GenericProxyHandler(AbstractProxyHandler):
                 response_size=0,
                 duration_ms=round(duration_ms, 1),
                 is_streaming=is_streaming,
+                is_fallback=is_fallback,
+                fallback_from_slug=fallback_from_slug,
                 error=str(e),
             )
             raise
