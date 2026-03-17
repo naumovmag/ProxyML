@@ -227,7 +227,7 @@ export default function ChatPlayground({ service, replay, onReplayConsumed }: Pr
           <Settings2 className="h-4 w-4 mr-1" />Settings
           {showSettings ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
         </Button>
-        <PresetManager serviceType="llm_chat" getParams={getParams} onLoad={loadParams} />
+        <PresetManager serviceId={service.id} serviceType="llm_chat" getParams={getParams} onLoad={loadParams} />
         <div className="ml-auto flex gap-1">
           <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating} title="AI: generate test params">
             {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
