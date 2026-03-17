@@ -8,6 +8,7 @@ import ServicesPage from './pages/ServicesPage'
 import ApiKeysPage from './pages/ApiKeysPage'
 import HealthPage from './pages/HealthPage'
 import UsersPage from './pages/UsersPage'
+import SettingsPage from './pages/SettingsPage'
 import Layout from './components/layout/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ export default function App() {
                   <Route path="/api-keys" element={<ApiKeysPage />} />
                   <Route path="/health" element={<HealthPage />} />
                   <Route path="/users" element={<SuperadminRoute><UsersPage /></SuperadminRoute>} />
+                  <Route path="/settings" element={<SuperadminRoute><SettingsPage /></SuperadminRoute>} />
                 </Routes>
               </Layout>
             </PrivateRoute>

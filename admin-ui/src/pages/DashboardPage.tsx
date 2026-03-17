@@ -8,7 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X } from 'lucide-react'
+import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X, Sparkles, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { fetchSettings, SystemSettings } from '@/api/settings'
+import { aiSummarizeDashboard, aiAnalyzeError } from '@/api/ai'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -44,6 +47,63 @@ export default function DashboardPage() {
   useEffect(() => { loadLogs() }, [filters, logsLimit])
 
   const [selectedLog, setSelectedLog] = useState<RecentLog | null>(null)
+
+  // AI
+  const [aiSettings, setAiSettings] = useState<SystemSettings | null>(null)
+  const [aiSummary, setAiSummary] = useState<string | null>(null)
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false)
+  const [aiErrorAnalysis, setAiErrorAnalysis] = useState<string | null>(null)
+  const [aiErrorLoading, setAiErrorLoading] = useState(false)
+
+  useEffect(() => {
+    fetchSettings().then((r) => setAiSettings(r.data)).catch(() => {})
+  }, [])
+
+  const handleAiSummary = async () => {
+    if (!overview) return
+    setAiSummaryLoading(true)
+    setAiSummary(null)
+    try {
+      const { data } = await aiSummarizeDashboard({
+        period_hours: hours,
+        total_requests: overview.total_requests,
+        total_errors: overview.total_errors,
+        error_rate: overview.total_requests > 0 ? (overview.total_errors / overview.total_requests) * 100 : 0,
+        avg_duration_ms: overview.avg_duration_ms,
+        total_request_bytes: overview.total_request_bytes,
+        total_response_bytes: overview.total_response_bytes,
+        by_service: byService,
+        by_key: [],
+      })
+      setAiSummary(data.text)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'AI summary failed')
+    } finally {
+      setAiSummaryLoading(false)
+    }
+  }
+
+  const handleAiAnalyzeError = async (log: RecentLog) => {
+    setAiErrorLoading(true)
+    setAiErrorAnalysis(null)
+    try {
+      const { data } = await aiAnalyzeError({
+        service_slug: log.service_slug,
+        method: log.method,
+        path: log.path,
+        status_code: log.status_code,
+        duration_ms: log.duration_ms,
+        error: log.error,
+        is_streaming: log.is_streaming,
+        is_fallback: log.is_fallback,
+      })
+      setAiErrorAnalysis(data.text)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'AI analysis failed')
+    } finally {
+      setAiErrorLoading(false)
+    }
+  }
 
   const activeServices = services.filter((s) => s.is_active).length
   const activeKeys = apiKeys.filter((k) => k.is_active).length
@@ -149,6 +209,27 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Summary */}
+      {aiSettings?.ai_enabled && overview && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              AI Insights
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={handleAiSummary} disabled={aiSummaryLoading}>
+              {aiSummaryLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              {aiSummary ? 'Refresh' : 'Analyze'}
+            </Button>
+          </CardHeader>
+          {aiSummary && (
+            <CardContent>
+              <div className="text-sm whitespace-pre-wrap">{aiSummary}</div>
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {/* Requests by Service */}
       {byService.length > 0 && (
@@ -311,7 +392,7 @@ export default function DashboardPage() {
         </Card>
 
       {/* Request Detail Dialog */}
-      <Dialog open={!!selectedLog} onOpenChange={(open) => { if (!open) setSelectedLog(null) }}>
+      <Dialog open={!!selectedLog} onOpenChange={(open) => { if (!open) { setSelectedLog(null); setAiErrorAnalysis(null) } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Request Details</DialogTitle>
@@ -378,6 +459,22 @@ export default function DashboardPage() {
                 <div>
                   <span className="text-muted-foreground">Error</span>
                   <div className="font-mono text-xs bg-destructive/10 text-destructive rounded p-2 mt-1 break-all">{selectedLog.error}</div>
+                </div>
+              )}
+              {aiSettings?.ai_enabled && selectedLog.status_code >= 400 && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5" /> AI Analysis
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => handleAiAnalyzeError(selectedLog)} disabled={aiErrorLoading}>
+                      {aiErrorLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                      {aiErrorAnalysis ? 'Retry' : 'Analyze'}
+                    </Button>
+                  </div>
+                  {aiErrorAnalysis && (
+                    <div className="text-sm bg-muted rounded p-3 whitespace-pre-wrap">{aiErrorAnalysis}</div>
+                  )}
                 </div>
               )}
             </div>
