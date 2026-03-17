@@ -89,6 +89,7 @@ export interface HealthReport {
   items: HealthReportItem[]
   total: number
   healthy: number
+  warning: number
   unhealthy: number
   unconfigured: number
 }

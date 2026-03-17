@@ -3,7 +3,7 @@ import { checkAllServicesHealth, fetchServices, HealthReport, Service } from '@/
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, Loader2, RefreshCw, AlertCircle, Sparkles } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, RefreshCw, AlertCircle, AlertTriangle, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiDiagnoseHealth } from '@/api/ai'
@@ -92,7 +92,7 @@ export default function HealthPage() {
       {report && (
         <div className="space-y-6">
           {/* Summary cards */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-5 gap-4">
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold">{report.total}</div>
@@ -103,6 +103,12 @@ export default function HealthPage() {
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-green-500">{report.healthy}</div>
                 <div className="text-sm text-muted-foreground mt-1">Healthy</div>
+              </CardContent>
+            </Card>
+            <Card className="border-yellow-500/30">
+              <CardContent className="p-4 text-center">
+                <div className="text-3xl font-bold text-yellow-500">{report.warning}</div>
+                <div className="text-sm text-muted-foreground mt-1">Warning</div>
               </CardContent>
             </Card>
             <Card className="border-red-500/30">
@@ -134,6 +140,8 @@ export default function HealthPage() {
                     <div className="flex items-center gap-3">
                       {item.status === 'ok' ? (
                         <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                      ) : item.status === 'warning' ? (
+                        <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
                       ) : item.status === 'error' ? (
                         <XCircle className="h-5 w-5 text-red-500 shrink-0" />
                       ) : (
