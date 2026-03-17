@@ -25,8 +25,12 @@ async def lifespan(app: FastAPI):
     try:
         from src.db.engine import async_session_factory
         from src.models.admin_user import AdminUser
+        from src.models.service import Service
+        from src.models.service_group import ServiceGroup
+        from src.models.api_key import ApiKey
+        from src.models.request_log import RequestLog
         from src.utils.crypto import hash_password
-        from sqlalchemy import select
+        from sqlalchemy import select, update
 
         async with async_session_factory() as session:
             result = await session.execute(select(AdminUser).where(AdminUser.username == settings.admin_username))
@@ -35,16 +39,36 @@ async def lifespan(app: FastAPI):
                 admin = AdminUser(
                     username=settings.admin_username,
                     password_hash=await hash_password(settings.admin_password),
+                    is_superadmin=True,
+                    is_approved=True,
                 )
                 session.add(admin)
                 await session.commit()
+                await session.refresh(admin)
                 logger.info(f"Admin user '{settings.admin_username}' seeded.")
             else:
+                changed = False
                 from src.utils.crypto import verify_password
                 if not await verify_password(settings.admin_password, admin.password_hash):
                     admin.password_hash = await hash_password(settings.admin_password)
-                    await session.commit()
+                    changed = True
                     logger.info(f"Admin user '{settings.admin_username}' password updated from settings.")
+                if not admin.is_superadmin:
+                    admin.is_superadmin = True
+                    changed = True
+                if not admin.is_approved:
+                    admin.is_approved = True
+                    changed = True
+                if changed:
+                    await session.commit()
+
+            # Backfill owner_id for existing records that have no owner
+            admin_id = admin.id
+            for model in [Service, ServiceGroup, ApiKey, RequestLog]:
+                await session.execute(
+                    update(model).where(model.owner_id.is_(None)).values(owner_id=admin_id)
+                )
+            await session.commit()
     except Exception as e:
         logger.warning(f"Could not seed admin user: {e}")
     yield

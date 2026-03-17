@@ -27,6 +27,10 @@ async def proxy_request(
     if not service or not service.is_active:
         raise HTTPException(status_code=404, detail="Service not found")
 
+    # Multi-tenancy: API key must belong to the same owner as the service
+    if api_key.owner_id and service.owner_id and api_key.owner_id != service.owner_id:
+        raise HTTPException(status_code=403, detail="API key does not have access to this service")
+
     handler = registry.get(service.service_type)
     if handler is None:
         raise HTTPException(status_code=500, detail="No handler for service type")

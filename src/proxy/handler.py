@@ -62,6 +62,7 @@ class GenericProxyHandler(AbstractProxyHandler):
                     is_cached=True,
                     is_fallback=is_fallback,
                     fallback_from_slug=fallback_from_slug,
+                    owner_id=service.owner_id,
                 )
                 resp_headers = cached["headers"]
                 resp_headers["X-ProxyML-Cache"] = "HIT"
@@ -178,6 +179,7 @@ class GenericProxyHandler(AbstractProxyHandler):
                     is_streaming=False,
                     is_fallback=is_fallback,
                     fallback_from_slug=fallback_from_slug,
+                    owner_id=service.owner_id,
                 )
 
                 response_headers = dict(response.headers)

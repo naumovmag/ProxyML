@@ -39,30 +39,42 @@ async def _validate_fallback(
             break
         current = await get_service_by_id(session, current.fallback_service_id)
 
-async def list_services(session: AsyncSession, active_only: bool = False) -> list[Service]:
+
+async def list_services(
+    session: AsyncSession,
+    active_only: bool = False,
+    owner_id: uuid.UUID | None = None,
+) -> list[Service]:
     stmt = select(Service).order_by(Service.name)
     if active_only:
         stmt = stmt.where(Service.is_active == True)
+    if owner_id:
+        stmt = stmt.where(Service.owner_id == owner_id)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
 
 async def get_service_by_id(session: AsyncSession, service_id: uuid.UUID) -> Service | None:
     result = await session.execute(select(Service).where(Service.id == service_id))
     return result.scalar_one_or_none()
 
+
 async def get_service_by_slug(session: AsyncSession, slug: str) -> Service | None:
     result = await session.execute(select(Service).where(Service.slug == slug))
     return result.scalar_one_or_none()
 
-async def create_service(session: AsyncSession, data: ServiceCreate) -> Service:
+
+async def create_service(session: AsyncSession, data: ServiceCreate, owner_id: uuid.UUID | None = None) -> Service:
     dump = data.model_dump()
     if dump.get("fallback_service_id"):
         await _validate_fallback(session, None, dump["service_type"], dump["fallback_service_id"])
+    dump["owner_id"] = owner_id
     service = Service(**dump)
     session.add(service)
     await session.commit()
     await session.refresh(service)
     return service
+
 
 async def update_service(session: AsyncSession, service_id: uuid.UUID, data: ServiceUpdate) -> Service | None:
     service = await get_service_by_id(session, service_id)
@@ -84,6 +96,7 @@ async def update_service(session: AsyncSession, service_id: uuid.UUID, data: Ser
     await session.commit()
     await session.refresh(service)
     return service
+
 
 async def delete_service(session: AsyncSession, service_id: uuid.UUID) -> bool:
     result = await session.execute(delete(Service).where(Service.id == service_id))

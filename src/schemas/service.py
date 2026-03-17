@@ -77,6 +77,7 @@ class ServiceUpdate(BaseModel):
 
 class ServiceRead(ServiceBase):
     id: uuid.UUID
+    owner_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

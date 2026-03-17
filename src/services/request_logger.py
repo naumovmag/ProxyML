@@ -24,6 +24,7 @@ def log_request_fire_and_forget(
     is_fallback: bool = False,
     fallback_from_slug: str | None = None,
     error: str | None = None,
+    owner_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget: schedule DB write without awaiting it in the request path."""
     asyncio.get_running_loop().create_task(
@@ -43,6 +44,7 @@ def log_request_fire_and_forget(
             is_fallback=is_fallback,
             fallback_from_slug=fallback_from_slug,
             error=error,
+            owner_id=owner_id,
         )
     )
 
