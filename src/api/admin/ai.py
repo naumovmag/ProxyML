@@ -6,7 +6,7 @@ from src.api.deps import get_current_admin
 from src.models.admin_user import AdminUser
 from src.services.ai_service import (
     ai_parse_curl, ai_analyze_error, ai_diagnose_health,
-    ai_summarize_dashboard, ai_generate_description,
+    ai_summarize_dashboard, ai_generate_description, ai_generate_test_params,
     AINotConfiguredError, AICallError,
 )
 
@@ -148,3 +148,25 @@ async def generate_description(
         return AITextResponse(text=text)
     except (AINotConfiguredError, AICallError) as e:
         _handle_ai_error(e)
+
+
+class GenerateTestParamsRequest(BaseModel):
+    name: str
+    service_type: str
+    default_model: str | None = None
+    supports_streaming: bool = False
+
+
+@router.post("/ai/generate-test-params")
+async def generate_test_params(
+    data: GenerateTestParamsRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        result = await ai_generate_test_params(session, data.model_dump())
+        return result
+    except (AINotConfiguredError, AICallError) as e:
+        _handle_ai_error(e)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate test params: {str(e)}")

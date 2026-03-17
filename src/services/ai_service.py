@@ -191,3 +191,31 @@ Return ONLY the description text. No quotes, no formatting. One sentence max."""
 - Streaming: {service_info.get('supports_streaming', False)}"""},
     ]
     return await call_llm(session, messages, temperature=0.5, max_tokens=500)
+
+
+async def ai_generate_test_params(session: AsyncSession, service_info: dict) -> dict:
+    """Generate sample request parameters for playground testing."""
+    messages = [
+        {"role": "system", "content": """You generate sample test request data for ML service APIs.
+Return ONLY a valid JSON object with these fields:
+- path: string, the API endpoint path (e.g. "v1/chat/completions")
+- body: object, a sample request body appropriate for this service type
+- description: string, one sentence explaining what this test does (in Russian)
+
+Rules by service_type:
+- llm_chat: path "v1/chat/completions", body with model, messages (include a creative sample prompt), temperature, max_tokens
+- embedding: path "v1/embeddings", body with model, input (a sample text to embed)
+- stt: path "v1/audio/transcriptions", body with model only (file is uploaded separately)
+- tts: path "v1/audio/speech", body with model, input (a short sample text in Russian), voice
+- custom: path "", body with a sample JSON payload
+
+Use the provided model name if available. Be creative with sample prompts/texts.
+Return ONLY JSON, no markdown, no explanation."""},
+        {"role": "user", "content": f"""Service:
+- Name: {service_info.get('name')}
+- Type: {service_info.get('service_type')}
+- Model: {service_info.get('default_model', 'not set')}
+- Streaming: {service_info.get('supports_streaming', False)}"""},
+    ]
+    result = await call_llm(session, messages, temperature=0.8, max_tokens=1000)
+    return _extract_json(result)

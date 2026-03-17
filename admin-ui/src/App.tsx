@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import ServicesPage from './pages/ServicesPage'
 import ApiKeysPage from './pages/ApiKeysPage'
 import HealthPage from './pages/HealthPage'
+import PlaygroundPage from './pages/PlaygroundPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
 import Layout from './components/layout/Layout'
@@ -40,6 +41,7 @@ export default function App() {
                   <Route path="/services" element={<ServicesPage />} />
                   <Route path="/api-keys" element={<ApiKeysPage />} />
                   <Route path="/health" element={<HealthPage />} />
+                  <Route path="/playground" element={<PlaygroundPage />} />
                   <Route path="/users" element={<SuperadminRoute><UsersPage /></SuperadminRoute>} />
                   <Route path="/settings" element={<SuperadminRoute><SettingsPage /></SuperadminRoute>} />
                 </Routes>
