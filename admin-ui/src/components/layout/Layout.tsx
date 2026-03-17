@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useThemeStore } from '@/store/themeStore'
-import { LayoutDashboard, Server, Key, LogOut, Moon, Sun, HeartPulse, Users } from 'lucide-react'
+import { LayoutDashboard, Server, Key, LogOut, Moon, Sun, HeartPulse, Users, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -15,7 +15,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: '/services', label: 'Services', icon: Server },
     { path: '/api-keys', label: 'API Keys', icon: Key },
     { path: '/health', label: 'Health Check', icon: HeartPulse },
-    ...(user?.is_superadmin ? [{ path: '/users', label: 'Users', icon: Users }] : []),
+    ...(user?.is_superadmin ? [
+      { path: '/users', label: 'Users', icon: Users },
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ] : []),
   ]
 
   return (
