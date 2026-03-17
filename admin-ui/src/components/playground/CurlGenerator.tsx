@@ -74,7 +74,7 @@ export default function CurlGenerator({ service, method = 'POST', path = '', bod
     }
   }
 
-  const proxyUrl = `${window.location.origin}/api/v1/proxy/${service.slug}`
+  const proxyUrl = `${window.location.origin}/proxy/${service.slug}`
   const fullUrl = path ? `${proxyUrl}/${path.replace(/^\//, '')}` : proxyUrl
 
   const buildCurl = () => {
