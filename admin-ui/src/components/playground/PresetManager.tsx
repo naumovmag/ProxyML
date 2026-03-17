@@ -13,22 +13,23 @@ import { toast } from 'sonner'
 import { Preset, fetchPresets, createPreset, updatePreset, deletePreset } from '@/api/playground'
 
 interface Props {
+  serviceId: string
   serviceType: string
   getParams: () => Record<string, unknown>
   onLoad: (params: Record<string, unknown>) => void
 }
 
-export default function PresetManager({ serviceType, getParams, onLoad }: Props) {
+export default function PresetManager({ serviceId, serviceType, getParams, onLoad }: Props) {
   const [presets, setPresets] = useState<Preset[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const [newName, setNewName] = useState('')
 
   const load = () => {
-    fetchPresets(serviceType).then(({ data }) => setPresets(data)).catch(() => {})
+    fetchPresets({ service_id: serviceId }).then(({ data }) => setPresets(data)).catch(() => {})
   }
 
-  useEffect(() => { load() }, [serviceType])
+  useEffect(() => { setSelectedId(''); load() }, [serviceId])
 
   const handleLoad = (presetId: string) => {
     const preset = presets.find((p) => p.id === presetId)
@@ -45,7 +46,7 @@ export default function PresetManager({ serviceType, getParams, onLoad }: Props)
       return
     }
     try {
-      await createPreset({ service_type: serviceType, name: newName.trim(), params: getParams() })
+      await createPreset({ service_id: serviceId, service_type: serviceType, name: newName.trim(), params: getParams() })
       setNewName('')
       setSaving(false)
       load()

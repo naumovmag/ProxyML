@@ -235,6 +235,7 @@ async def playground_upload(
 
 
 class PresetCreate(BaseModel):
+    service_id: str
     service_type: str
     name: str
     params: dict
@@ -247,6 +248,7 @@ class PresetUpdate(BaseModel):
 
 class PresetRead(BaseModel):
     id: str
+    service_id: str | None
     service_type: str
     name: str
     params: dict
@@ -256,25 +258,30 @@ class PresetRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _preset_to_read(p: PlaygroundPreset) -> PresetRead:
+    return PresetRead(
+        id=str(p.id), service_id=str(p.service_id) if p.service_id else None,
+        service_type=p.service_type, name=p.name,
+        params=p.params, created_at=p.created_at.isoformat(), updated_at=p.updated_at.isoformat(),
+    )
+
+
 @router.get("/playground/presets")
 async def list_presets(
+    service_id: str | None = Query(None),
     service_type: str | None = Query(None),
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
     q = select(PlaygroundPreset).where(PlaygroundPreset.owner_id == admin.id)
-    if service_type:
+    if service_id:
+        q = q.where(PlaygroundPreset.service_id == uuid.UUID(service_id))
+    elif service_type:
         q = q.where(PlaygroundPreset.service_type == service_type)
     q = q.order_by(PlaygroundPreset.updated_at.desc())
     result = await session.execute(q)
     presets = result.scalars().all()
-    return [
-        PresetRead(
-            id=str(p.id), service_type=p.service_type, name=p.name,
-            params=p.params, created_at=p.created_at.isoformat(), updated_at=p.updated_at.isoformat(),
-        )
-        for p in presets
-    ]
+    return [_preset_to_read(p) for p in presets]
 
 
 @router.post("/playground/presets")
@@ -285,6 +292,7 @@ async def create_preset(
 ):
     preset = PlaygroundPreset(
         owner_id=admin.id,
+        service_id=uuid.UUID(data.service_id),
         service_type=data.service_type,
         name=data.name,
         params=data.params,
@@ -292,10 +300,7 @@ async def create_preset(
     session.add(preset)
     await session.commit()
     await session.refresh(preset)
-    return PresetRead(
-        id=str(preset.id), service_type=preset.service_type, name=preset.name,
-        params=preset.params, created_at=preset.created_at.isoformat(), updated_at=preset.updated_at.isoformat(),
-    )
+    return _preset_to_read(preset)
 
 
 @router.put("/playground/presets/{preset_id}")
@@ -317,10 +322,7 @@ async def update_preset(
         preset.params = data.params
     await session.commit()
     await session.refresh(preset)
-    return PresetRead(
-        id=str(preset.id), service_type=preset.service_type, name=preset.name,
-        params=preset.params, created_at=preset.created_at.isoformat(), updated_at=preset.updated_at.isoformat(),
-    )
+    return _preset_to_read(preset)
 
 
 @router.delete("/playground/presets/{preset_id}")

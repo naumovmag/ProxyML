@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   fetchServices, createService, updateService, deleteService, checkServiceHealth,
   exportServices, importServices, fetchServiceGroups, createServiceGroup, updateServiceGroup, deleteServiceGroup,
@@ -16,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode, FlaskConical } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiParseCurl, aiGenerateDescription } from '@/api/ai'
@@ -65,6 +66,7 @@ const emptyForm: ServiceCreate = {
 }
 
 export default function ServicesPage() {
+  const navigate = useNavigate()
   const [services, setServices] = useState<Service[]>([])
   const [groups, setGroups] = useState<ServiceGroup[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -477,6 +479,7 @@ export default function ServicesPage() {
               )}
               <span className="ml-1">Check</span>
             </Button>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Test in Playground"><FlaskConical className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openCurl(s)} title="cURL"><Terminal className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Edit"><Edit className="h-4 w-4" /></Button>

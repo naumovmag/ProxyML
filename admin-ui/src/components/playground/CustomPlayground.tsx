@@ -98,7 +98,7 @@ export default function CustomPlayground({ service, replay, onReplayConsumed }: 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <PresetManager serviceType="custom" getParams={getParams} onLoad={loadParams} />
+        <PresetManager serviceId={service.id} serviceType="custom" getParams={getParams} onLoad={loadParams} />
         <div className="ml-auto flex gap-1">
           <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating}>
             {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}

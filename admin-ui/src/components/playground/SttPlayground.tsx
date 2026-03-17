@@ -70,7 +70,7 @@ export default function SttPlayground({ service, replay, onReplayConsumed }: Pro
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <PresetManager serviceType="stt" getParams={getParams} onLoad={loadParams} />
+        <PresetManager serviceId={service.id} serviceType="stt" getParams={getParams} onLoad={loadParams} />
         <div className="ml-auto">
           <CurlGenerator service={service} method="POST" path="v1/audio/transcriptions" body={{ model: model || undefined }} headers={{ 'Content-Type': 'multipart/form-data' }} />
         </div>

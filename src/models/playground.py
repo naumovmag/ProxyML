@@ -14,12 +14,16 @@ class PlaygroundPreset(Base, UUIDMixin, TimestampMixin):
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
     )
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("services.id", ondelete="CASCADE"), nullable=True
+    )
     service_type: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
 
     __table_args__ = (
         Index("ix_playground_presets_owner_id", "owner_id"),
+        Index("ix_playground_presets_service_id", "service_id"),
     )
 
 
