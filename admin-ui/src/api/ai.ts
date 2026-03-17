@@ -48,3 +48,10 @@ export const aiGenerateDescription = (data: {
   default_model?: string | null
   supports_streaming?: boolean
 }) => api.post<AITextResponse>('/admin/ai/generate-description', data)
+
+export const aiGenerateTestParams = (data: {
+  name: string
+  service_type: string
+  default_model?: string | null
+  supports_streaming?: boolean
+}) => api.post<{ path: string; body: Record<string, unknown>; description: string }>('/admin/ai/generate-test-params', data)

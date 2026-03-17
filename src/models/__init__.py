@@ -3,5 +3,6 @@ from src.models.service import Service
 from src.models.api_key import ApiKey
 from src.models.admin_user import AdminUser
 from src.models.request_log import RequestLog
+from src.models.playground import PlaygroundPreset, PlaygroundHistory
 
-__all__ = ["ServiceGroup", "Service", "ApiKey", "AdminUser", "RequestLog"]
+__all__ = ["ServiceGroup", "Service", "ApiKey", "AdminUser", "RequestLog", "PlaygroundPreset", "PlaygroundHistory"]
