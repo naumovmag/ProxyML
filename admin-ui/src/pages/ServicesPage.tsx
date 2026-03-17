@@ -16,8 +16,10 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode } from 'lucide-react'
 import { toast } from 'sonner'
+import { fetchSettings, SystemSettings } from '@/api/settings'
+import { aiParseCurl, aiGenerateDescription } from '@/api/ai'
 
 function DroppableZone({ id, children, isOver }: { id: string; children: React.ReactNode; isOver?: boolean }) {
   const { setNodeRef, isOver: over } = useDroppable({ id })
@@ -58,7 +60,8 @@ const emptyForm: ServiceCreate = {
   timeout_seconds: 120, supports_streaming: false, extra_headers: null,
   health_check_path: null, health_check_method: 'GET', description: null,
   tags: [], request_schema_hint: null, cache_enabled: false,
-  cache_ttl_seconds: 86400, is_active: true, group_id: null,
+  cache_ttl_seconds: 86400, fallback_service_id: null,
+  fallback_on_statuses: [502, 503, 504], is_active: true, group_id: null,
 }
 
 export default function ServicesPage() {
@@ -73,6 +76,13 @@ export default function ServicesPage() {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [curlDialog, setCurlDialog] = useState<{ open: boolean; curl: string }>({ open: false, curl: '' })
   const [curlCopied, setCurlCopied] = useState(false)
+
+  // AI
+  const [aiSettings, setAiSettings] = useState<SystemSettings | null>(null)
+  const [curlImportDialog, setCurlImportDialog] = useState(false)
+  const [curlImportText, setCurlImportText] = useState('')
+  const [curlImportLoading, setCurlImportLoading] = useState(false)
+  const [aiDescLoading, setAiDescLoading] = useState(false)
 
   const [confirmState, setConfirmState] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void }>({ open: false, title: '', description: '', onConfirm: () => {} })
 
@@ -117,7 +127,10 @@ export default function ServicesPage() {
     fetchServices().then((r) => setServices(r.data))
     fetchServiceGroups().then((r) => setGroups(r.data))
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    fetchSettings().then((r) => setAiSettings(r.data)).catch(() => {})
+  }, [])
 
   const toggleGroup = (id: string) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
 
@@ -141,6 +154,7 @@ export default function ServicesPage() {
       health_check_path: s.health_check_path, health_check_method: s.health_check_method,
       description: s.description, tags: s.tags, request_schema_hint: s.request_schema_hint,
       cache_enabled: s.cache_enabled, cache_ttl_seconds: s.cache_ttl_seconds,
+      fallback_service_id: null, fallback_on_statuses: [502, 503, 504],
       is_active: s.is_active, group_id: s.group_id,
     })
     setTagsInput(s.tags.join(', '))
@@ -158,6 +172,7 @@ export default function ServicesPage() {
       health_check_path: s.health_check_path, health_check_method: s.health_check_method,
       description: s.description, tags: s.tags, request_schema_hint: s.request_schema_hint,
       cache_enabled: s.cache_enabled, cache_ttl_seconds: s.cache_ttl_seconds,
+      fallback_service_id: s.fallback_service_id, fallback_on_statuses: s.fallback_on_statuses || [502, 503, 504],
       is_active: s.is_active, group_id: s.group_id,
     })
     setTagsInput(s.tags.join(', '))
@@ -371,6 +386,62 @@ export default function ServicesPage() {
     setTimeout(() => setCurlCopied(false), 2000)
   }
 
+  const handleCurlImport = async () => {
+    if (!curlImportText.trim()) return
+    setCurlImportLoading(true)
+    try {
+      const { data } = await aiParseCurl(curlImportText)
+      setEditId(null)
+      setModalHealth(null)
+      setForm({
+        ...emptyForm,
+        name: (data.name as string) || '',
+        slug: (data.slug as string) || '',
+        base_url: (data.base_url as string) || '',
+        service_type: (data.service_type as string) || 'custom',
+        auth_type: (data.auth_type as string) || 'none',
+        auth_token: (data.auth_token as string) || null,
+        auth_header_name: (data.auth_header_name as string) || 'Authorization',
+        default_model: (data.default_model as string) || null,
+        supports_streaming: (data.supports_streaming as boolean) || false,
+        extra_headers: (data.extra_headers as Record<string, string>) || null,
+        health_check_path: (data.health_check_path as string) || null,
+        description: (data.description as string) || null,
+        timeout_seconds: (data.timeout_seconds as number) || 120,
+        tags: (data.tags as string[]) || [],
+      })
+      setTagsInput(((data.tags as string[]) || []).join(', '))
+      setCurlImportDialog(false)
+      setCurlImportText('')
+      setDialogOpen(true)
+      toast.success('cURL parsed — review and save')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to parse cURL')
+    } finally {
+      setCurlImportLoading(false)
+    }
+  }
+
+  const handleGenerateDescription = async () => {
+    if (!form.name || !form.base_url) return
+    setAiDescLoading(true)
+    try {
+      const { data } = await aiGenerateDescription({
+        name: form.name,
+        service_type: form.service_type,
+        base_url: form.base_url,
+        default_model: form.default_model,
+        supports_streaming: form.supports_streaming,
+      })
+      setField('description', data.text)
+      toast.success('Description generated')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to generate description')
+    } finally {
+      setAiDescLoading(false)
+    }
+  }
+
   const setField = (key: string, value: any) => setForm((prev) => ({ ...prev, [key]: value }))
 
   // Group services
@@ -391,6 +462,7 @@ export default function ServicesPage() {
             <Badge variant="outline">{s.service_type}</Badge>
             {s.supports_streaming && <Badge variant="warning">SSE</Badge>}
             {s.cache_enabled && <Badge variant="outline">Cache</Badge>}
+            {s.fallback_service_id && <Badge variant="outline">Fallback</Badge>}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => handleCheck(s.id)} disabled={health?.loading}>
@@ -438,6 +510,11 @@ export default function ServicesPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-2" />Export</Button>
           <Button variant="outline" onClick={handleImport}><Upload className="h-4 w-4 mr-2" />Import</Button>
+          {aiSettings?.ai_enabled && (
+            <Button variant="outline" onClick={() => setCurlImportDialog(true)}>
+              <FileCode className="h-4 w-4 mr-2" />From cURL
+            </Button>
+          )}
           <Button variant="outline" onClick={openCreateGroup}><FolderPlus className="h-4 w-4 mr-2" />Add Group</Button>
           <Button onClick={() => openCreate()}><Plus className="h-4 w-4 mr-2" />Add Service</Button>
         </div>
@@ -562,7 +639,14 @@ export default function ServicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Type</Label>
-                <Select value={form.service_type} onValueChange={(v) => setField('service_type', v)}>
+                <Select value={form.service_type} onValueChange={(v) => {
+                  setField('service_type', v)
+                  // Reset fallback if it's incompatible with new type
+                  if (form.fallback_service_id) {
+                    const fb = services.find((s) => s.id === form.fallback_service_id)
+                    if (fb && fb.service_type !== v) setField('fallback_service_id', null)
+                  }
+                }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SERVICE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
@@ -629,7 +713,15 @@ export default function ServicesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Description</Label>
+              <div className="flex items-center gap-2">
+                <Label>Description</Label>
+                {aiSettings?.ai_enabled && (
+                  <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={handleGenerateDescription} disabled={aiDescLoading}>
+                    {aiDescLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                    Generate
+                  </Button>
+                )}
+              </div>
               <Input value={form.description || ''} onChange={(e) => setField('description', e.target.value || null)} />
             </div>
 
@@ -666,6 +758,41 @@ export default function ServicesPage() {
                 </div>
               </div>
             )}
+
+            {/* Fallback */}
+            <div className="space-y-3 rounded-md border p-4">
+              <Label className="text-sm font-medium">Fallback Service</Label>
+              <Select
+                value={form.fallback_service_id || '_none'}
+                onValueChange={(v) => setField('fallback_service_id', v === '_none' ? null : v)}
+              >
+                <SelectTrigger><SelectValue placeholder="No fallback" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">No fallback</SelectItem>
+                  {services
+                    .filter((s) => s.id !== editId && s.service_type === form.service_type)
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name} ({s.slug})</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {form.fallback_service_id && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Trigger on HTTP statuses (comma separated)</Label>
+                  <Input
+                    value={(form.fallback_on_statuses || []).join(', ')}
+                    onChange={(e) => {
+                      const statuses = e.target.value.split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n))
+                      setField('fallback_on_statuses', statuses.length > 0 ? statuses : [502, 503, 504])
+                    }}
+                    placeholder="502, 503, 504"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Also triggers on connection errors and timeouts
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Check Connection inside modal */}
             <div className="rounded-md border p-4 space-y-3">
@@ -786,6 +913,38 @@ export default function ServicesPage() {
                 {curlCopied ? 'Copied' : 'Copy'}
               </Button>
               <Button onClick={() => setCurlDialog({ open: false, curl: '' })}>Close</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* cURL Import Dialog */}
+      <Dialog open={curlImportDialog} onOpenChange={setCurlImportDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Create Service from cURL
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Paste a cURL command and AI will parse it into a service configuration.
+            </p>
+            <textarea
+              className="w-full h-40 rounded-md border bg-background p-3 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder={'curl -X POST \'http://localhost:8080/v1/chat/completions\' \\\n  -H \'Authorization: Bearer sk-xxx\' \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model": "llama3", "messages": [...]}\''}
+              value={curlImportText}
+              onChange={(e) => setCurlImportText(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setCurlImportDialog(false); setCurlImportText('') }}>
+                Cancel
+              </Button>
+              <Button onClick={handleCurlImport} disabled={curlImportLoading || !curlImportText.trim()}>
+                {curlImportLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                {curlImportLoading ? 'Parsing...' : 'Parse & Create'}
+              </Button>
             </div>
           </div>
         </DialogContent>

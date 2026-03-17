@@ -6,47 +6,88 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_current_admin
 from src.services.service_registry import (
-    list_services, get_service_by_id, get_service_by_slug, create_service, update_service, delete_service
+    list_services, get_service_by_id, get_service_by_slug, create_service, update_service, delete_service,
+    FallbackValidationError,
 )
 from src.schemas.service import ServiceCreate, ServiceUpdate, ServiceRead
 from src.models.service_group import ServiceGroup
+from src.models.admin_user import AdminUser
 
-router = APIRouter(dependencies=[Depends(get_current_admin)])
+router = APIRouter()
+
 
 @router.get("/services", response_model=list[ServiceRead])
-async def admin_list_services(session: AsyncSession = Depends(get_async_session)):
-    return await list_services(session)
+async def admin_list_services(
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    return await list_services(session, owner_id=admin.id)
+
 
 @router.get("/services/{service_id}", response_model=ServiceRead)
-async def admin_get_service(service_id: uuid.UUID, session: AsyncSession = Depends(get_async_session)):
+async def admin_get_service(
+    service_id: uuid.UUID,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
     svc = await get_service_by_id(session, service_id)
-    if not svc:
+    if not svc or svc.owner_id != admin.id:
         raise HTTPException(status_code=404, detail="Service not found")
     return svc
+
 
 @router.post("/services", response_model=ServiceRead, status_code=201)
-async def admin_create_service(data: ServiceCreate, session: AsyncSession = Depends(get_async_session)):
-    return await create_service(session, data)
+async def admin_create_service(
+    data: ServiceCreate,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await create_service(session, data, owner_id=admin.id)
+    except FallbackValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.put("/services/{service_id}", response_model=ServiceRead)
-async def admin_update_service(service_id: uuid.UUID, data: ServiceUpdate, session: AsyncSession = Depends(get_async_session)):
-    svc = await update_service(session, service_id, data)
-    if not svc:
+async def admin_update_service(
+    service_id: uuid.UUID,
+    data: ServiceUpdate,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    svc = await get_service_by_id(session, service_id)
+    if not svc or svc.owner_id != admin.id:
         raise HTTPException(status_code=404, detail="Service not found")
+    try:
+        svc = await update_service(session, service_id, data)
+    except FallbackValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return svc
 
+
 @router.delete("/services/{service_id}", status_code=204)
-async def admin_delete_service(service_id: uuid.UUID, session: AsyncSession = Depends(get_async_session)):
-    deleted = await delete_service(session, service_id)
-    if not deleted:
+async def admin_delete_service(
+    service_id: uuid.UUID,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    svc = await get_service_by_id(session, service_id)
+    if not svc or svc.owner_id != admin.id:
         raise HTTPException(status_code=404, detail="Service not found")
+    await delete_service(session, service_id)
 
 
 @router.get("/services-export")
-async def export_services(session: AsyncSession = Depends(get_async_session)):
+async def export_services(
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
     """Export all groups and services with all fields including auth tokens as JSON."""
-    # Export groups
-    groups_result = await session.execute(select(ServiceGroup).order_by(ServiceGroup.sort_order, ServiceGroup.name))
+    groups_result = await session.execute(
+        select(ServiceGroup)
+        .where(ServiceGroup.owner_id == admin.id)
+        .order_by(ServiceGroup.sort_order, ServiceGroup.name)
+    )
     groups = list(groups_result.scalars().all())
     groups_map = {g.id: g.name for g in groups}
 
@@ -55,8 +96,9 @@ async def export_services(session: AsyncSession = Depends(get_async_session)):
         for g in groups
     ]
 
-    # Export services
-    services = await list_services(session)
+    services = await list_services(session, owner_id=admin.id)
+    id_to_slug = {s.id: s.slug for s in services}
+
     services_data = []
     for s in services:
         services_data.append({
@@ -79,6 +121,8 @@ async def export_services(session: AsyncSession = Depends(get_async_session)):
             "request_schema_hint": s.request_schema_hint,
             "cache_enabled": s.cache_enabled,
             "cache_ttl_seconds": s.cache_ttl_seconds,
+            "fallback_service_slug": id_to_slug.get(s.fallback_service_id) if s.fallback_service_id else None,
+            "fallback_on_statuses": s.fallback_on_statuses,
             "is_active": s.is_active,
         })
     return JSONResponse(
@@ -90,6 +134,7 @@ async def export_services(session: AsyncSession = Depends(get_async_session)):
 @router.post("/services-import")
 async def import_services(
     file: UploadFile = File(...),
+    admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Import groups and services from JSON file. Matches by name/slug, updates existing."""
@@ -115,7 +160,9 @@ async def import_services(
             name = g_item.get("name")
             if not name:
                 continue
-            result = await session.execute(select(ServiceGroup).where(ServiceGroup.name == name))
+            result = await session.execute(
+                select(ServiceGroup).where(ServiceGroup.name == name, ServiceGroup.owner_id == admin.id)
+            )
             existing_group = result.scalar_one_or_none()
             if existing_group:
                 if "description" in g_item:
@@ -129,6 +176,7 @@ async def import_services(
                     name=name,
                     description=g_item.get("description"),
                     sort_order=g_item.get("sort_order", 0),
+                    owner_id=admin.id,
                 )
                 session.add(new_group)
                 await session.flush()
@@ -136,8 +184,10 @@ async def import_services(
                 groups_created += 1
         await session.commit()
 
-    # Load all existing groups for name->id mapping
-    all_groups = await session.execute(select(ServiceGroup))
+    # Load all existing groups for this owner
+    all_groups = await session.execute(
+        select(ServiceGroup).where(ServiceGroup.owner_id == admin.id)
+    )
     for g in all_groups.scalars().all():
         group_name_to_id[g.name] = g.id
 
@@ -149,7 +199,8 @@ async def import_services(
     created = 0
     updated = 0
     errors = []
-    skip_keys = {"id", "created_at", "updated_at", "group_id", "group_name"}
+    skip_keys = {"id", "created_at", "updated_at", "group_id", "group_name", "fallback_service_slug", "owner_id"}
+    fallback_links: list[tuple[str, str]] = []
 
     for i, item in enumerate(services_data):
         try:
@@ -158,7 +209,6 @@ async def import_services(
                 errors.append(f"Item {i}: missing slug")
                 continue
 
-            # Resolve group
             group_id = None
             group_name = item.get("group_name")
             if group_name and group_name in group_name_to_id:
@@ -166,18 +216,37 @@ async def import_services(
 
             svc_fields = {k: v for k, v in item.items() if k not in skip_keys}
             svc_fields["group_id"] = group_id
+            svc_fields.pop("fallback_service_id", None)
 
             existing = await get_service_by_slug(session, slug)
             if existing:
+                if existing.owner_id != admin.id:
+                    errors.append(f"Item {i} (slug={slug}): slug already used by another user")
+                    continue
                 update_data = ServiceUpdate(**svc_fields)
                 await update_service(session, existing.id, update_data)
                 updated += 1
             else:
                 svc_data = ServiceCreate(**svc_fields)
-                await create_service(session, svc_data)
+                await create_service(session, svc_data, owner_id=admin.id)
                 created += 1
+
+            fallback_slug = item.get("fallback_service_slug")
+            if fallback_slug:
+                fallback_links.append((slug, fallback_slug))
         except Exception as e:
             errors.append(f"Item {i} (slug={item.get('slug', '?')}): {str(e)}")
+
+    # Second pass: resolve fallback references
+    for svc_slug, fb_slug in fallback_links:
+        try:
+            svc = await get_service_by_slug(session, svc_slug)
+            fb = await get_service_by_slug(session, fb_slug)
+            if svc and fb and svc.owner_id == admin.id:
+                svc.fallback_service_id = fb.id
+                await session.commit()
+        except Exception as e:
+            errors.append(f"Fallback link {svc_slug} -> {fb_slug}: {str(e)}")
 
     return {
         "groups_created": groups_created,

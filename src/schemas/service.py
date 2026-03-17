@@ -43,6 +43,8 @@ class ServiceBase(BaseModel):
     request_schema_hint: dict | None = None
     cache_enabled: bool = False
     cache_ttl_seconds: int = 86400
+    fallback_service_id: uuid.UUID | None = None
+    fallback_on_statuses: list[int] | None = [502, 503, 504]
     is_active: bool = True
 
 class ServiceCreate(ServiceBase):
@@ -68,10 +70,14 @@ class ServiceUpdate(BaseModel):
     request_schema_hint: dict | None = None
     cache_enabled: bool | None = None
     cache_ttl_seconds: int | None = None
+    fallback_service_id: uuid.UUID | None = None
+    fallback_on_statuses: list[int] | None = None
+    clear_fallback: bool = False
     is_active: bool | None = None
 
 class ServiceRead(ServiceBase):
     id: uuid.UUID
+    owner_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

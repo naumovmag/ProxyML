@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { login as loginApi } from '@/api/auth'
 import { Button } from '@/components/ui/button'
@@ -20,10 +20,11 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const { data } = await loginApi({ username, password })
-      loginStore(data.access_token)
+      loginStore(data.access_token, data.user)
       navigate('/')
-    } catch {
-      toast.error('Invalid credentials')
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || 'Invalid credentials'
+      toast.error(detail)
     } finally {
       setLoading(false)
     }
@@ -50,6 +51,12 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
+          <div className="mt-4 text-center text-sm text-muted-foreground">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-primary underline hover:no-underline">
+              Register
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

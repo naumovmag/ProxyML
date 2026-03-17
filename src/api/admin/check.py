@@ -7,13 +7,19 @@ from src.api.deps import get_current_admin
 from src.services.service_registry import get_service_by_id, list_services
 from src.services.health_checker import check_service_health
 from src.schemas.health import ServiceHealthCheck, HealthReportResponse, HealthReportItem
+from src.models.admin_user import AdminUser
 
-router = APIRouter(dependencies=[Depends(get_current_admin)])
+router = APIRouter()
+
 
 @router.post("/services/{service_id}/check", response_model=ServiceHealthCheck)
-async def check_connection(service_id: uuid.UUID, session: AsyncSession = Depends(get_async_session)):
+async def check_connection(
+    service_id: uuid.UUID,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
     service = await get_service_by_id(session, service_id)
-    if not service:
+    if not service or service.owner_id != admin.id:
         raise HTTPException(status_code=404, detail="Service not found")
     result = await check_service_health(service)
     return ServiceHealthCheck(
@@ -22,9 +28,13 @@ async def check_connection(service_id: uuid.UUID, session: AsyncSession = Depend
         **result,
     )
 
+
 @router.post("/services-check-all", response_model=HealthReportResponse)
-async def check_all_services(session: AsyncSession = Depends(get_async_session)):
-    services = await list_services(session, active_only=False)
+async def check_all_services(
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    services = await list_services(session, active_only=False, owner_id=admin.id)
 
     async def check_one(svc):
         result = await check_service_health(svc)

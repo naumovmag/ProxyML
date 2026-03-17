@@ -6,7 +6,8 @@ from alembic import context
 
 # Import all models so metadata is populated
 from src.db.base import Base
-from src.models import Service, ServiceGroup, ApiKey, AdminUser, RequestLog
+from src.models import Service, ServiceGroup, ApiKey, AdminUser, RequestLog, PlaygroundPreset, PlaygroundHistory
+from src.models.system_settings import SystemSettings
 from src.config import settings
 
 config = context.config

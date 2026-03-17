@@ -1,21 +1,26 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useThemeStore } from '@/store/themeStore'
-import { LayoutDashboard, Server, Key, LogOut, Moon, Sun, HeartPulse } from 'lucide-react'
+import { LayoutDashboard, Server, Key, LogOut, Moon, Sun, HeartPulse, Users, Settings, FlaskConical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/services', label: 'Services', icon: Server },
-  { path: '/api-keys', label: 'API Keys', icon: Key },
-  { path: '/health', label: 'Health Check', icon: HeartPulse },
-]
-
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const logout = useAuthStore((s) => s.logout)
+  const { logout, user } = useAuthStore()
   const { theme, toggle } = useThemeStore()
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/services', label: 'Services', icon: Server },
+    { path: '/api-keys', label: 'API Keys', icon: Key },
+    { path: '/health', label: 'Health Check', icon: HeartPulse },
+    { path: '/playground', label: 'Playground', icon: FlaskConical },
+    ...(user?.is_superadmin ? [
+      { path: '/users', label: 'Users', icon: Users },
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ] : []),
+  ]
 
   return (
     <div className="flex h-screen">
@@ -43,6 +48,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="p-3 border-t space-y-2">
+          {user && (
+            <div className="px-3 py-1 text-sm">
+              <div className="font-medium truncate">{user.display_name || user.username}</div>
+              <div className="text-xs text-muted-foreground truncate">@{user.username}</div>
+            </div>
+          )}
           <Button variant="ghost" size="sm" className="w-full justify-start gap-3" onClick={toggle}>
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
