@@ -49,10 +49,17 @@ export default function HistoryPanel({ serviceId, onReplay }: Props) {
     } catch { toast.error('Failed to delete') }
   }
 
+  const [confirmClear, setConfirmClear] = useState(false)
+
   const handleClearAll = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true)
+      return
+    }
     try {
       await clearHistory()
       setEntries([])
+      setConfirmClear(false)
       toast.success('History cleared')
     } catch { toast.error('Failed to clear') }
   }
@@ -73,9 +80,17 @@ export default function HistoryPanel({ serviceId, onReplay }: Props) {
           Favorites
         </Button>
         {entries.length > 0 && (
-          <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={handleClearAll}>
-            <Trash2 className="h-3 w-3 mr-1" />Clear all
-          </Button>
+          confirmClear ? (
+            <div className="flex gap-1 ml-auto items-center">
+              <span className="text-xs text-destructive">Delete all history?</span>
+              <Button variant="destructive" size="sm" onClick={handleClearAll} className="h-7 text-xs">Yes, clear</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmClear(false)} className="h-7 text-xs">Cancel</Button>
+            </div>
+          ) : (
+            <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={handleClearAll}>
+              <Trash2 className="h-3 w-3 mr-1" />Clear all
+            </Button>
+          )
         )}
       </div>
 

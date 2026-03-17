@@ -94,6 +94,7 @@ export const executePlaygroundTts = (data: PlaygroundRequest) =>
 
 export interface Preset {
   id: string
+  service_id: string | null
   service_type: string
   name: string
   params: Record<string, unknown>
@@ -101,10 +102,10 @@ export interface Preset {
   updated_at: string
 }
 
-export const fetchPresets = (serviceType?: string) =>
-  api.get<Preset[]>('/admin/playground/presets', { params: { service_type: serviceType } })
+export const fetchPresets = (params?: { service_id?: string; service_type?: string }) =>
+  api.get<Preset[]>('/admin/playground/presets', { params })
 
-export const createPreset = (data: { service_type: string; name: string; params: Record<string, unknown> }) =>
+export const createPreset = (data: { service_id: string; service_type: string; name: string; params: Record<string, unknown> }) =>
   api.post<Preset>('/admin/playground/presets', data)
 
 export const updatePreset = (id: string, data: { name?: string; params?: Record<string, unknown> }) =>
