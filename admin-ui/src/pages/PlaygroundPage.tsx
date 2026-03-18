@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { fetchServices, Service } from '@/api/services'
 import { fetchSettings } from '@/api/settings'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,13 +12,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { FlaskConical, History } from 'lucide-react'
+import { FlaskConical, History, Zap } from 'lucide-react'
 import { HistoryEntry } from '@/api/playground'
 import ChatPlayground from '@/components/playground/ChatPlayground'
 import EmbeddingPlayground from '@/components/playground/EmbeddingPlayground'
 import SttPlayground from '@/components/playground/SttPlayground'
 import TtsPlayground from '@/components/playground/TtsPlayground'
 import CustomPlayground from '@/components/playground/CustomPlayground'
+import QuickTestPlayground from '@/components/playground/QuickTestPlayground'
 import HistoryPanel from '@/components/playground/HistoryPanel'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -29,10 +30,11 @@ const TYPE_LABELS: Record<string, string> = {
   custom: 'Custom',
 }
 
-type Tab = 'playground' | 'history'
+type Tab = 'playground' | 'quick-test' | 'history'
 
 export default function PlaygroundPage() {
   const location = useLocation()
+  const navigate = useNavigate()
   const navServiceId = (location.state as { serviceId?: string } | null)?.serviceId
   const [services, setServices] = useState<Service[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
@@ -72,6 +74,19 @@ export default function PlaygroundPage() {
     setTab('playground')
   }
 
+  const handleCreateServiceFromQuickTest = (params: {
+    base_url: string
+    auth_type: string
+    auth_token?: string
+    auth_header_name?: string
+    default_model?: string
+    supports_streaming?: boolean
+    extra_headers?: Record<string, string>
+  }) => {
+    // Navigate to services page with pre-filled params
+    navigate('/services', { state: { createService: params } })
+  }
+
   const renderPlayground = () => {
     if (!selected) return null
     const replay = replayEntry
@@ -94,22 +109,6 @@ export default function PlaygroundPage() {
     return <div className="text-center text-muted-foreground py-12">Loading services...</div>
   }
 
-  if (services.length === 0) {
-    return (
-      <div>
-        <div className="flex items-center gap-3 mb-6">
-          <FlaskConical className="h-6 w-6" />
-          <h2 className="text-2xl font-bold">Playground</h2>
-        </div>
-        <Card>
-          <CardContent className="p-12 text-center text-muted-foreground">
-            No active services. Add a service first to use the playground.
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   return (
     <div>
       {/* Header with tabs */}
@@ -125,7 +124,15 @@ export default function PlaygroundPage() {
             onClick={() => setTab('playground')}
           >
             <FlaskConical className="h-4 w-4 mr-1" />
-            Playground
+            Services
+          </Button>
+          <Button
+            variant={tab === 'quick-test' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setTab('quick-test')}
+          >
+            <Zap className="h-4 w-4 mr-1" />
+            Quick Test
           </Button>
           <Button
             variant={tab === 'history' ? 'default' : 'ghost'}
@@ -138,27 +145,44 @@ export default function PlaygroundPage() {
         </div>
       </div>
 
-      {/* Service selector — always visible */}
-      <div className="flex items-center gap-4 mb-4">
-        {tab === 'playground' ? (
-          <Select value={selectedId} onValueChange={setSelectedId}>
-            <SelectTrigger className="w-80">
-              <SelectValue placeholder="Select a service" />
-            </SelectTrigger>
-            <SelectContent>
-              {services.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  <span className="flex items-center gap-2">
-                    {s.name}
-                    <span className="text-xs text-muted-foreground">
-                      ({TYPE_LABELS[s.service_type] || s.service_type})
+      {/* Service selector — visible for playground and history tabs */}
+      {tab === 'playground' && (
+        <div className="flex items-center gap-4 mb-4">
+          {services.length > 0 ? (
+            <Select value={selectedId} onValueChange={setSelectedId}>
+              <SelectTrigger className="w-80">
+                <SelectValue placeholder="Select a service" />
+              </SelectTrigger>
+              <SelectContent>
+                {services.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    <span className="flex items-center gap-2">
+                      {s.name}
+                      <span className="text-xs text-muted-foreground">
+                        ({TYPE_LABELS[s.service_type] || s.service_type})
+                      </span>
                     </span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className="text-sm text-muted-foreground">No active services. Use Quick Test or add a service first.</p>
+          )}
+
+          {selected && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="outline">{TYPE_LABELS[selected.service_type] || selected.service_type}</Badge>
+              <span className="font-mono text-xs">{selected.base_url}</span>
+              {selected.supports_streaming && <Badge variant="secondary">Streaming</Badge>}
+              {selected.default_model && <Badge variant="secondary">{selected.default_model}</Badge>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div className="flex items-center gap-4 mb-4">
           <Select value={historyServiceFilter} onValueChange={setHistoryServiceFilter}>
             <SelectTrigger className="w-80">
               <SelectValue />
@@ -177,17 +201,8 @@ export default function PlaygroundPage() {
               ))}
             </SelectContent>
           </Select>
-        )}
-
-        {tab === 'playground' && selected && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="outline">{TYPE_LABELS[selected.service_type] || selected.service_type}</Badge>
-            <span className="font-mono text-xs">{selected.base_url}</span>
-            {selected.supports_streaming && <Badge variant="secondary">Streaming</Badge>}
-            {selected.default_model && <Badge variant="secondary">{selected.default_model}</Badge>}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Content */}
       {tab === 'history' ? (
@@ -195,8 +210,19 @@ export default function PlaygroundPage() {
           serviceId={historyServiceFilter === 'all' ? undefined : historyServiceFilter}
           onReplay={handleReplay}
         />
+      ) : tab === 'quick-test' ? (
+        <QuickTestPlayground
+          aiEnabled={aiEnabled}
+          onCreateService={handleCreateServiceFromQuickTest}
+        />
       ) : (
-        selected && renderPlayground()
+        selected ? renderPlayground() : (
+          <Card>
+            <CardContent className="p-12 text-center text-muted-foreground">
+              No active services. Use the <button className="underline" onClick={() => setTab('quick-test')}>Quick Test</button> tab to test and create services.
+            </CardContent>
+          </Card>
+        )
       )}
     </div>
   )

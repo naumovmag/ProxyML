@@ -20,6 +20,19 @@ export interface PlaygroundResponse {
 export const executePlayground = (data: PlaygroundRequest) =>
   api.post<PlaygroundResponse>('/admin/playground/execute', data)
 
+export interface QuickTestRequest {
+  url: string
+  method: string
+  body?: unknown
+  headers?: Record<string, string>
+  auth_type?: string
+  auth_token?: string
+  auth_header_name?: string
+}
+
+export const executeQuickTest = (data: QuickTestRequest) =>
+  api.post<PlaygroundResponse>('/admin/playground/quick-test', data)
+
 export async function executePlaygroundStream(
   data: PlaygroundRequest,
   onChunk: (text: string) => void,

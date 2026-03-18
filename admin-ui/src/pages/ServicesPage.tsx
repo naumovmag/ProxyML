@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   fetchServices, createService, updateService, deleteService, checkServiceHealth,
   exportServices, importServices, fetchServiceGroups, createServiceGroup, updateServiceGroup, deleteServiceGroup,
@@ -67,6 +67,7 @@ const emptyForm: ServiceCreate = {
 
 export default function ServicesPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [services, setServices] = useState<Service[]>([])
   const [groups, setGroups] = useState<ServiceGroup[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -133,6 +134,28 @@ export default function ServicesPage() {
     load()
     fetchSettings().then((r) => setAiSettings(r.data)).catch(() => {})
   }, [])
+
+  // Handle pre-filled service creation from Quick Test
+  useEffect(() => {
+    const state = location.state as { createService?: Record<string, unknown> } | null
+    if (state?.createService) {
+      const p = state.createService
+      setForm({
+        ...emptyForm,
+        base_url: String(p.base_url || ''),
+        auth_type: String(p.auth_type || 'none'),
+        auth_token: p.auth_token ? String(p.auth_token) : null,
+        auth_header_name: p.auth_header_name ? String(p.auth_header_name) : 'Authorization',
+        default_model: p.default_model ? String(p.default_model) : null,
+        supports_streaming: Boolean(p.supports_streaming),
+        extra_headers: (p.extra_headers as Record<string, string>) || null,
+      })
+      setEditId(null)
+      setDialogOpen(true)
+      // Clear navigation state so reload doesn't re-trigger
+      window.history.replaceState({}, '')
+    }
+  }, [location.state])
 
   const toggleGroup = (id: string) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
 

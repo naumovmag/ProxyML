@@ -55,6 +55,75 @@ def _apply_auth(headers: dict, service) -> str | None:
     return None
 
 
+class QuickTestRequest(BaseModel):
+    url: str
+    method: str = "POST"
+    body: dict | list | str | None = None
+    headers: dict[str, str] | None = None
+    auth_type: str = "none"  # none, bearer, header
+    auth_token: str | None = None
+    auth_header_name: str = "Authorization"
+
+
+@router.post("/playground/quick-test")
+async def playground_quick_test(
+    data: QuickTestRequest,
+    admin: AdminUser = Depends(get_current_admin),
+):
+    """Execute a raw HTTP request for testing a service before creating it."""
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if data.headers:
+        headers.update(data.headers)
+
+    if data.auth_type == "bearer" and data.auth_token:
+        headers["Authorization"] = f"Bearer {data.auth_token}"
+    elif data.auth_type == "header" and data.auth_token:
+        headers[data.auth_header_name] = data.auth_token
+
+    content: bytes | None = None
+    if data.body is not None:
+        if isinstance(data.body, str):
+            content = data.body.encode()
+        else:
+            content = json.dumps(data.body).encode()
+
+    timeout = httpx.Timeout(30.0, connect=10.0)
+    client = await get_http_client()
+    start = time.monotonic()
+
+    try:
+        response = await client.request(
+            method=data.method,
+            url=data.url,
+            headers=headers,
+            content=content,
+            timeout=timeout,
+        )
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+
+        resp_headers = {}
+        for k, v in response.headers.items():
+            if k.lower() not in ("transfer-encoding", "connection", "content-encoding"):
+                resp_headers[k] = v
+
+        body_text = response.text
+        return PlaygroundResponse(
+            status_code=response.status_code,
+            headers=resp_headers,
+            body=body_text,
+            duration_ms=duration_ms,
+            response_size=len(response.content),
+        )
+    except httpx.TimeoutException:
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+        raise HTTPException(status_code=504, detail=f"Timeout after {duration_ms}ms")
+    except httpx.ConnectError as e:
+        raise HTTPException(status_code=502, detail=f"Connection failed: {str(e)}")
+    except Exception as e:
+        logger.error(f"Quick test error: {e}")
+        raise HTTPException(status_code=502, detail=f"Request error: {str(e)}")
+
+
 @router.post("/playground/execute")
 async def playground_execute(
     data: PlaygroundRequest,
