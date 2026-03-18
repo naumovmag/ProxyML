@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { fetchServices, Service } from '@/api/services'
+import { fetchSettings } from '@/api/settings'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,11 @@ export default function PlaygroundPage() {
   const [tab, setTab] = useState<Tab>('playground')
   const [replayEntry, setReplayEntry] = useState<HistoryEntry | null>(null)
   const [historyServiceFilter, setHistoryServiceFilter] = useState<string>('all')
+  const [aiEnabled, setAiEnabled] = useState(false)
+
+  useEffect(() => {
+    fetchSettings().then(({ data }) => setAiEnabled(data.ai_enabled)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetchServices()
@@ -72,15 +78,15 @@ export default function PlaygroundPage() {
     const clearReplay = () => setReplayEntry(null)
     switch (selected.service_type) {
       case 'llm_chat':
-        return <ChatPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} />
+        return <ChatPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} aiEnabled={aiEnabled} />
       case 'embedding':
-        return <EmbeddingPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} />
+        return <EmbeddingPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} aiEnabled={aiEnabled} />
       case 'stt':
         return <SttPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} />
       case 'tts':
-        return <TtsPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} />
+        return <TtsPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} aiEnabled={aiEnabled} />
       default:
-        return <CustomPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} />
+        return <CustomPlayground service={selected} key={selected.id} replay={replay} onReplayConsumed={clearReplay} aiEnabled={aiEnabled} />
     }
   }
 

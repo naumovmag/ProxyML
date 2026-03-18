@@ -21,9 +21,10 @@ interface Props {
   service: Service
   replay?: HistoryEntry | null
   onReplayConsumed?: () => void
+  aiEnabled?: boolean
 }
 
-export default function CustomPlayground({ service, replay, onReplayConsumed }: Props) {
+export default function CustomPlayground({ service, replay, onReplayConsumed, aiEnabled }: Props) {
   const [method, setMethod] = useState('POST')
   const [path, setPath] = useState('')
   const [body, setBody] = useState('{\n  \n}')
@@ -100,10 +101,12 @@ export default function CustomPlayground({ service, replay, onReplayConsumed }: 
       <div className="flex items-center gap-2">
         <PresetManager serviceId={service.id} serviceType="custom" getParams={getParams} onLoad={loadParams} />
         <div className="ml-auto flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating}>
-            {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-            AI Fill
-          </Button>
+          {aiEnabled && (
+            <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating}>
+              {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+              AI Fill
+            </Button>
+          )}
           <CurlGenerator service={service} method={method} path={path} body={body.trim() && method !== 'GET' && method !== 'DELETE' ? (() => { try { return JSON.parse(body) } catch { return undefined } })() : undefined} />
         </div>
       </div>

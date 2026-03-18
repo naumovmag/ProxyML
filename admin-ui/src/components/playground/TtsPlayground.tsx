@@ -19,9 +19,10 @@ interface Props {
   service: Service
   replay?: HistoryEntry | null
   onReplayConsumed?: () => void
+  aiEnabled?: boolean
 }
 
-export default function TtsPlayground({ service, replay, onReplayConsumed }: Props) {
+export default function TtsPlayground({ service, replay, onReplayConsumed, aiEnabled }: Props) {
   const [text, setText] = useState('')
   const [model, setModel] = useState(service.default_model || '')
   const [voice, setVoice] = useState('alloy')
@@ -104,9 +105,11 @@ export default function TtsPlayground({ service, replay, onReplayConsumed }: Pro
       <div className="flex items-center gap-2">
         <PresetManager serviceId={service.id} serviceType="tts" getParams={getParams} onLoad={loadParams} />
         <div className="ml-auto flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating}>
-            {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}AI Fill
-          </Button>
+          {aiEnabled && (
+            <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating}>
+              {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}AI Fill
+            </Button>
+          )}
           <CurlGenerator service={service} method="POST" path="v1/audio/speech" body={{ model: model || undefined, input: text, voice }} />
         </div>
       </div>

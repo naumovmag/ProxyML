@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode, FlaskConical } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode, FlaskConical } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiParseCurl, aiGenerateDescription } from '@/api/ai'
@@ -472,6 +472,8 @@ export default function ServicesPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : health?.result?.status === 'ok' ? (
                 <CheckCircle className="h-4 w-4 text-green-500" />
+              ) : health?.result?.status === 'warning' ? (
+                <AlertTriangle className="h-4 w-4 text-yellow-500" />
               ) : health?.result?.status === 'error' ? (
                 <XCircle className="h-4 w-4 text-red-500" />
               ) : (
@@ -494,7 +496,7 @@ export default function ServicesPage() {
             {health?.result && (
               <div className="mt-2">
                 <span className="font-medium">Health:</span>{' '}
-                <span className={health.result.status === 'ok' ? 'text-green-500' : 'text-red-500'}>
+                <span className={health.result.status === 'ok' ? 'text-green-500' : health.result.status === 'warning' ? 'text-yellow-500' : 'text-red-500'}>
                   {health.result.status} - {health.result.detail}
                 </span>
                 {health.result.response_time_ms && <span> ({health.result.response_time_ms}ms)</span>}
@@ -821,6 +823,8 @@ export default function ServicesPage() {
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : modalHealth?.result?.status === 'ok' ? (
                       <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
+                    ) : modalHealth?.result?.status === 'warning' ? (
+                      <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2" />
                     ) : modalHealth?.result?.status === 'error' ? (
                       <XCircle className="h-4 w-4 text-red-500 mr-2" />
                     ) : (
@@ -836,8 +840,8 @@ export default function ServicesPage() {
                 </div>
               )}
               {modalHealth?.result && (
-                <div className={`text-sm ${modalHealth.result.status === 'ok' ? 'text-green-500' : 'text-red-500'}`}>
-                  {modalHealth.result.status === 'ok' ? 'Connected' : 'Failed'}: {modalHealth.result.detail}
+                <div className={`text-sm ${modalHealth.result.status === 'ok' ? 'text-green-500' : modalHealth.result.status === 'warning' ? 'text-yellow-500' : 'text-red-500'}`}>
+                  {modalHealth.result.status === 'ok' ? 'Connected' : modalHealth.result.status === 'warning' ? 'Reachable (unexpected status)' : 'Failed'}: {modalHealth.result.detail}
                   {modalHealth.result.response_time_ms != null && ` (${modalHealth.result.response_time_ms}ms)`}
                 </div>
               )}

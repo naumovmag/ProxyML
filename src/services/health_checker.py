@@ -30,8 +30,10 @@ async def check_service_health(service: Service) -> dict:
             resp = await client.request(service.health_check_method, url, headers=headers)
             elapsed = (time.monotonic() - start) * 1000
 
-            if resp.status_code < 400 or resp.status_code in (405, 422):
+            if resp.status_code == 200:
                 return {"status": "ok", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
+            elif resp.status_code < 400 or resp.status_code in (405, 422):
+                return {"status": "warning", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
             else:
                 return {"status": "error", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
     except httpx.ConnectError:

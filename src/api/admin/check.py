@@ -50,6 +50,7 @@ async def check_all_services(
     items = list(items)
     total = len(items)
     healthy = sum(1 for i in items if i.status == "ok")
+    warning = sum(1 for i in items if i.status == "warning")
     unhealthy = sum(1 for i in items if i.status == "error")
     unconfigured = sum(1 for i in items if i.status == "unknown")
 
@@ -57,6 +58,7 @@ async def check_all_services(
         items=items,
         total=total,
         healthy=healthy,
+        warning=warning,
         unhealthy=unhealthy,
         unconfigured=unconfigured,
     )

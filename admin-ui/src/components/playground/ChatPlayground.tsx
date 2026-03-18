@@ -33,9 +33,10 @@ interface Props {
   service: Service
   replay?: HistoryEntry | null
   onReplayConsumed?: () => void
+  aiEnabled?: boolean
 }
 
-export default function ChatPlayground({ service, replay, onReplayConsumed }: Props) {
+export default function ChatPlayground({ service, replay, onReplayConsumed, aiEnabled }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -229,10 +230,12 @@ export default function ChatPlayground({ service, replay, onReplayConsumed }: Pr
         </Button>
         <PresetManager serviceId={service.id} serviceType="llm_chat" getParams={getParams} onLoad={loadParams} />
         <div className="ml-auto flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating} title="AI: generate test params">
-            {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-            AI Fill
-          </Button>
+          {aiEnabled && (
+            <Button variant="outline" size="sm" onClick={handleAiGenerate} disabled={aiGenerating} title="AI: generate test params">
+              {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+              AI Fill
+            </Button>
+          )}
           <CurlGenerator service={service} method="POST" path="v1/chat/completions" body={currentRequestBody()} />
         </div>
       </div>

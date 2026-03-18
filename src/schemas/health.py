@@ -7,7 +7,7 @@ class HealthResponse(BaseModel):
 class ServiceHealthCheck(BaseModel):
     service_id: str
     service_name: str
-    status: str  # "ok" | "error" | "unknown"
+    status: str  # "ok" | "warning" | "error" | "unknown"
     detail: str | None = None
     response_time_ms: float | None = None
 
@@ -16,7 +16,7 @@ class HealthReportItem(BaseModel):
     service_name: str
     slug: str
     is_active: bool
-    status: str  # "ok" | "error" | "unknown"
+    status: str  # "ok" | "warning" | "error" | "unknown"
     detail: str | None = None
     response_time_ms: float | None = None
 
@@ -24,5 +24,6 @@ class HealthReportResponse(BaseModel):
     items: list[HealthReportItem]
     total: int
     healthy: int
+    warning: int = 0
     unhealthy: int
     unconfigured: int
