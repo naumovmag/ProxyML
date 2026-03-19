@@ -119,7 +119,12 @@ Rules:
         {"role": "user", "content": curl_command},
     ]
     result = await call_llm(session, messages, temperature=0.1)
-    return _extract_json(result)
+    data = _extract_json(result)
+
+    if "slug" in data and isinstance(data["slug"], str):
+        data["slug"] = data["slug"].lower()
+
+    return data
 
 
 async def ai_analyze_error(session: AsyncSession, log_entry: dict) -> str:
