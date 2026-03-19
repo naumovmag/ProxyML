@@ -115,7 +115,7 @@ export default function PlaygroundPage() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <FlaskConical className="h-6 w-6" />
-          <h2 className="text-2xl font-bold">Playground</h2>
+          <h2 className="text-2xl font-bold">Request Test</h2>
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-1">
           <Button
@@ -132,7 +132,7 @@ export default function PlaygroundPage() {
             onClick={() => setTab('quick-test')}
           >
             <Zap className="h-4 w-4 mr-1" />
-            Quick Test
+            Request Test
           </Button>
           <Button
             variant={tab === 'history' ? 'default' : 'ghost'}
@@ -167,7 +167,7 @@ export default function PlaygroundPage() {
               </SelectContent>
             </Select>
           ) : (
-            <p className="text-sm text-muted-foreground">No active services. Use Quick Test or add a service first.</p>
+            <p className="text-sm text-muted-foreground">No active services. Use Request Test or add a service first.</p>
           )}
 
           {selected && (
@@ -219,7 +219,7 @@ export default function PlaygroundPage() {
         selected ? renderPlayground() : (
           <Card>
             <CardContent className="p-12 text-center text-muted-foreground">
-              No active services. Use the <button className="underline" onClick={() => setTab('quick-test')}>Quick Test</button> tab to test and create services.
+              No active services. Use the <button className="underline" onClick={() => setTab('quick-test')}>Request Test</button> tab to test and create services.
             </CardContent>
           </Card>
         )

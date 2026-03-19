@@ -21,6 +21,7 @@ import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle,
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiParseCurl, aiGenerateDescription } from '@/api/ai'
+import api from '@/api/client'
 
 function DroppableZone({ id, children, isOver }: { id: string; children: React.ReactNode; isOver?: boolean }) {
   const { setNodeRef, isOver: over } = useDroppable({ id })
@@ -77,8 +78,14 @@ export default function ServicesPage() {
   const [modalHealth, setModalHealth] = useState<{ loading: boolean; result?: HealthCheckResult } | null>(null)
   const [tagsInput, setTagsInput] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
-  const [curlDialog, setCurlDialog] = useState<{ open: boolean; curl: string }>({ open: false, curl: '' })
+  const [curlDialog, setCurlDialog] = useState<{ open: boolean; curl: string; service: Service | null }>({ open: false, curl: '', service: null })
   const [curlCopied, setCurlCopied] = useState(false)
+  const [curlKeys, setCurlKeys] = useState<{ id: string; name: string; key_prefix: string; is_active: boolean }[]>([])
+  const [curlSelectedKeyId, setCurlSelectedKeyId] = useState('')
+  const [curlApiKey, setCurlApiKey] = useState('')
+  const [curlCreatingKey, setCurlCreatingKey] = useState(false)
+  const [curlNewKeyName, setCurlNewKeyName] = useState('')
+  const [curlRawKeysCache] = useState<Map<string, string>>(() => new Map())
 
   // AI
   const [aiSettings, setAiSettings] = useState<SystemSettings | null>(null)
@@ -268,6 +275,47 @@ export default function ServicesPage() {
     }
   }
 
+  const handleExportService = (s: Service) => {
+    const group = s.group_id ? groups.find((g) => g.id === s.group_id) : null
+    const fallbackSlug = s.fallback_service_id ? services.find((fb) => fb.id === s.fallback_service_id)?.slug ?? null : null
+
+    const groupsData = group ? [{ name: group.name, description: group.description, sort_order: group.sort_order }] : []
+    const serviceData = {
+      name: s.name,
+      slug: s.slug,
+      group_name: group?.name ?? null,
+      service_type: s.service_type,
+      base_url: s.base_url,
+      auth_type: s.auth_type,
+      auth_token: s.auth_token,
+      auth_header_name: s.auth_header_name,
+      default_model: s.default_model,
+      timeout_seconds: s.timeout_seconds,
+      supports_streaming: s.supports_streaming,
+      extra_headers: s.extra_headers,
+      health_check_path: s.health_check_path,
+      health_check_method: s.health_check_method,
+      description: s.description,
+      tags: s.tags,
+      request_schema_hint: s.request_schema_hint,
+      cache_enabled: s.cache_enabled,
+      cache_ttl_seconds: s.cache_ttl_seconds,
+      fallback_service_slug: fallbackSlug,
+      fallback_on_statuses: s.fallback_on_statuses,
+      is_active: s.is_active,
+    }
+
+    const json = JSON.stringify({ version: 2, groups: groupsData, services: [serviceData] }, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `proxyml-service-${s.slug}-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Service "${s.name}" exported`)
+  }
+
   const handleExport = async () => {
     try {
       const { data } = await exportServices()
@@ -350,9 +398,10 @@ export default function ServicesPage() {
     })
   }
 
-  const generateCurl = (s: Service) => {
+  const generateCurl = (s: Service, keyValue?: string) => {
     const origin = window.location.origin
     const baseProxy = `${origin}/proxy/${s.slug}`
+    const keyPlaceholder = keyValue || 'YOUR_API_KEY'
 
     const lines: string[] = []
 
@@ -360,7 +409,7 @@ export default function ServicesPage() {
       const model = s.default_model || 'your-model'
       lines.push(`curl -X POST '${baseProxy}/v1/chat/completions' \\`)
       lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: YOUR_API_KEY' \\`)
+      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
       lines.push(`  -d '{`)
       lines.push(`  "model": "${model}",`)
       lines.push(`  "messages": [{"role": "user", "content": "Hello"}],`)
@@ -370,20 +419,20 @@ export default function ServicesPage() {
       const model = s.default_model || 'your-model'
       lines.push(`curl -X POST '${baseProxy}/v1/embeddings' \\`)
       lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: YOUR_API_KEY' \\`)
+      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
       lines.push(`  -d '{`)
       lines.push(`  "model": "${model}",`)
       lines.push(`  "input": "Hello world"`)
       lines.push(`}'`)
     } else if (s.service_type === 'stt') {
       lines.push(`curl -X POST '${baseProxy}/v1/audio/transcriptions' \\`)
-      lines.push(`  -H 'X-Api-Key: YOUR_API_KEY' \\`)
+      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
       lines.push(`  -F 'file=@audio.wav' \\`)
       lines.push(`  -F 'model=${s.default_model || 'whisper-1'}'`)
     } else if (s.service_type === 'tts') {
       lines.push(`curl -X POST '${baseProxy}/v1/audio/speech' \\`)
       lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: YOUR_API_KEY' \\`)
+      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
       lines.push(`  -d '{`)
       lines.push(`  "model": "${s.default_model || 'tts-1'}",`)
       lines.push(`  "input": "Hello world",`)
@@ -393,7 +442,7 @@ export default function ServicesPage() {
     } else {
       lines.push(`curl -X POST '${baseProxy}/your-path' \\`)
       lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: YOUR_API_KEY' \\`)
+      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
       lines.push(`  -d '{"key": "value"}'`)
     }
 
@@ -401,14 +450,55 @@ export default function ServicesPage() {
   }
 
   const openCurl = (s: Service) => {
-    setCurlDialog({ open: true, curl: generateCurl(s) })
+    setCurlDialog({ open: true, curl: generateCurl(s), service: s })
     setCurlCopied(false)
+    setCurlApiKey('')
+    setCurlSelectedKeyId('')
+    setCurlCreatingKey(false)
+    setCurlNewKeyName('')
   }
 
   const copyCurl = () => {
     navigator.clipboard.writeText(curlDialog.curl)
     setCurlCopied(true)
     setTimeout(() => setCurlCopied(false), 2000)
+  }
+
+  // Load API keys when curl dialog opens
+  useEffect(() => {
+    if (curlDialog.open && curlDialog.service) {
+      api.get<{ id: string; name: string; key_prefix: string; is_active: boolean }[]>(
+        `/admin/api-keys/by-service/${curlDialog.service.slug}`
+      )
+        .then(({ data }) => setCurlKeys(data))
+        .catch(() => {})
+    }
+  }, [curlDialog.open, curlDialog.service?.slug])
+
+  // Regenerate curl when apiKey changes
+  useEffect(() => {
+    if (curlDialog.open && curlDialog.service) {
+      setCurlDialog((prev) => ({ ...prev, curl: generateCurl(prev.service!, curlApiKey || undefined) }))
+    }
+  }, [curlApiKey])
+
+  const handleCurlCreateKey = async () => {
+    if (!curlNewKeyName.trim() || !curlDialog.service) return
+    try {
+      const { data } = await api.post<{ raw_key: string; id: string; name: string; key_prefix: string; is_active: boolean }>(
+        '/admin/api-keys',
+        { name: curlNewKeyName.trim(), allowed_services: [curlDialog.service.slug] },
+      )
+      curlRawKeysCache.set(data.id, data.raw_key)
+      setCurlApiKey(data.raw_key)
+      setCurlKeys((prev) => [...prev, { id: data.id, name: data.name, key_prefix: data.key_prefix, is_active: data.is_active }])
+      setCurlSelectedKeyId(data.id)
+      setCurlCreatingKey(false)
+      setCurlNewKeyName('')
+      toast.success(`Key created: ${data.key_prefix}...`)
+    } catch {
+      toast.error('Failed to create key')
+    }
   }
 
   const handleCurlImport = async () => {
@@ -504,8 +594,9 @@ export default function ServicesPage() {
               )}
               <span className="ml-1">Check</span>
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Test in Playground"><FlaskConical className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Request Test"><FlaskConical className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openCurl(s)} title="cURL"><Terminal className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => handleExportService(s)} title="Export"><Download className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Edit"><Edit className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} title="Delete"><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -931,9 +1022,68 @@ export default function ServicesPage() {
             <DialogTitle>cURL Command</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Replace <code className="font-mono bg-muted px-1 rounded">YOUR_API_KEY</code> with an actual API key.
-            </p>
+            {/* API Key selection */}
+            <div className="space-y-2">
+              <Label className="text-sm">API Key</Label>
+              <div className="flex gap-2">
+                {curlKeys.length > 0 && (
+                  <Select
+                    value={curlSelectedKeyId}
+                    onValueChange={(id) => {
+                      setCurlSelectedKeyId(id)
+                      const cached = curlRawKeysCache.get(id)
+                      if (cached) {
+                        setCurlApiKey(cached)
+                      } else {
+                        const key = curlKeys.find((k) => k.id === id)
+                        if (key) {
+                          setCurlApiKey('')
+                          toast.info(`Key ${key.key_prefix}... — paste your raw key value below, or create a new key`)
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder="Select existing key" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {curlKeys.map((k) => (
+                        <SelectItem key={k.id} value={k.id}>
+                          {k.name} ({k.key_prefix}...)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Input
+                  value={curlApiKey}
+                  onChange={(e) => setCurlApiKey(e.target.value)}
+                  placeholder="Paste your API key or create new"
+                  className="flex-1 font-mono text-xs"
+                />
+              </div>
+              <div className="flex gap-2">
+                {curlCreatingKey ? (
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      value={curlNewKeyName}
+                      onChange={(e) => setCurlNewKeyName(e.target.value)}
+                      placeholder="Key name"
+                      className="h-8 w-48 text-xs"
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleCurlCreateKey() }}
+                      autoFocus
+                    />
+                    <Button size="sm" onClick={handleCurlCreateKey} className="h-8 text-xs">Create</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setCurlCreatingKey(false)} className="h-8 text-xs">Cancel</Button>
+                  </div>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setCurlCreatingKey(true)} className="text-xs">
+                    <Plus className="h-3 w-3 mr-1" />Create new key{curlDialog.service ? ` for ${curlDialog.service.slug}` : ''}
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <pre className="bg-muted p-4 rounded-md text-sm font-mono whitespace-pre-wrap break-all overflow-auto max-h-80">
               {curlDialog.curl}
             </pre>
@@ -942,7 +1092,7 @@ export default function ServicesPage() {
                 {curlCopied ? <Check className="h-4 w-4 mr-2 text-green-500" /> : <Copy className="h-4 w-4 mr-2" />}
                 {curlCopied ? 'Copied' : 'Copy'}
               </Button>
-              <Button onClick={() => setCurlDialog({ open: false, curl: '' })}>Close</Button>
+              <Button onClick={() => setCurlDialog({ open: false, curl: '', service: null })}>Close</Button>
             </div>
           </div>
         </DialogContent>

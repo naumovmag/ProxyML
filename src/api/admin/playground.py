@@ -87,7 +87,7 @@ async def playground_quick_test(
         else:
             content = json.dumps(data.body).encode()
 
-    timeout = httpx.Timeout(30.0, connect=10.0)
+    timeout = httpx.Timeout(600.0, connect=10.0)
     client = await get_http_client()
     start = time.monotonic()
 

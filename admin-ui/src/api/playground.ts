@@ -31,7 +31,7 @@ export interface QuickTestRequest {
 }
 
 export const executeQuickTest = (data: QuickTestRequest) =>
-  api.post<PlaygroundResponse>('/admin/playground/quick-test', data)
+  api.post<PlaygroundResponse>('/admin/playground/quick-test', data, { timeout: 660_000 })
 
 export async function executePlaygroundStream(
   data: PlaygroundRequest,

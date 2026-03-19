@@ -57,9 +57,24 @@ function parseCurl(raw: string): {
     || s.match(/(?:-d|--data|--data-raw)\s+"([\s\S]*?)"/i)
   if (bodyMatch) result.body = bodyMatch[1]
 
-  // Extract URL: the first token that looks like http(s)://...
-  const urlMatch = s.match(/['"]?(https?:\/\/[^\s'"]+)['"]?/)
-  if (urlMatch) result.url = urlMatch[1]
+  // Extract URL: first try explicit http(s)://, then find curl's positional argument
+  let urlMatch = s.match(/['"]?(https?:\/\/[^\s'"]+)['"]?/)
+  if (urlMatch) {
+    result.url = urlMatch[1]
+  } else {
+    // Strip known flags with their values, then find the remaining positional arg (the URL)
+    const stripped = s
+      .replace(/^curl\s+/, '')
+      .replace(/(?:-X|--request|-H|--header|-d|--data|--data-raw|--data-binary|-u|--user|-o|--output|-A|--user-agent)\s+(?:'[^']*'|"[^"]*"|\S+)/gi, '')
+      .replace(/(?:--location|--compressed|-s|--silent|-k|--insecure|-v|--verbose|-L|-S|-f)/gi, '')
+      .trim()
+    const bareMatch = stripped.match(/['"]?([^\s'"]+)['"]?/)
+    if (bareMatch) {
+      let u = bareMatch[1]
+      if (!/^https?:\/\//i.test(u)) u = 'http://' + u
+      result.url = u
+    }
+  }
 
   // Infer method from body if not explicit
   if (!result.method) result.method = result.body ? 'POST' : 'GET'
@@ -105,7 +120,7 @@ export default function QuickTestPlayground({ aiEnabled, onCreateService }: Prop
       // Extract auth from headers
       const auth = parsed.headers['Authorization'] || parsed.headers['authorization']
       if (auth) {
-        if (auth.startsWith('Bearer ')) {
+        if (auth.toLowerCase().startsWith('bearer ')) {
           setAuthType('bearer')
           setAuthToken(auth.slice(7))
         } else {
