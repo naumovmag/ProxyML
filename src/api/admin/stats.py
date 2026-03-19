@@ -7,6 +7,7 @@ from src.db.session import get_async_session
 from src.api.deps import get_current_admin
 from src.models.request_log import RequestLog
 from src.models.admin_user import AdminUser
+from src.services.service_access import get_accessible_service_ids
 
 router = APIRouter()
 
@@ -19,22 +20,28 @@ async def stats_overview(
 ):
     """Overall stats: total requests, avg duration, errors."""
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    owner_filter = and_(RequestLog.created_at >= since, RequestLog.owner_id == admin.id)
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return {
+            "period_hours": hours, "total_requests": 0, "total_errors": 0,
+            "avg_duration_ms": 0, "total_request_bytes": 0, "total_response_bytes": 0,
+        }
+    access_filter = and_(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
 
     total = await session.scalar(
-        select(func.count()).where(owner_filter)
+        select(func.count()).where(access_filter)
     )
     errors = await session.scalar(
-        select(func.count()).where(owner_filter, RequestLog.status_code >= 400)
+        select(func.count()).where(access_filter, RequestLog.status_code >= 400)
     )
     avg_duration = await session.scalar(
-        select(func.avg(RequestLog.duration_ms)).where(owner_filter)
+        select(func.avg(RequestLog.duration_ms)).where(access_filter)
     )
     total_request_bytes = await session.scalar(
-        select(func.coalesce(func.sum(RequestLog.request_size), 0)).where(owner_filter)
+        select(func.coalesce(func.sum(RequestLog.request_size), 0)).where(access_filter)
     )
     total_response_bytes = await session.scalar(
-        select(func.coalesce(func.sum(RequestLog.response_size), 0)).where(owner_filter)
+        select(func.coalesce(func.sum(RequestLog.response_size), 0)).where(access_filter)
     )
 
     return {
@@ -54,6 +61,9 @@ async def stats_by_service(
     session: AsyncSession = Depends(get_async_session),
 ):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return []
 
     result = await session.execute(
         select(
@@ -62,7 +72,7 @@ async def stats_by_service(
             func.count().filter(RequestLog.status_code >= 400).label("error_count"),
             func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
         )
-        .where(RequestLog.created_at >= since, RequestLog.owner_id == admin.id)
+        .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
         .group_by(RequestLog.service_slug)
         .order_by(desc("request_count"))
     )
@@ -85,6 +95,9 @@ async def stats_by_key(
     session: AsyncSession = Depends(get_async_session),
 ):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return []
 
     result = await session.execute(
         select(
@@ -93,7 +106,7 @@ async def stats_by_key(
         )
         .where(
             RequestLog.created_at >= since,
-            RequestLog.owner_id == admin.id,
+            RequestLog.service_id.in_(svc_ids),
             RequestLog.api_key_name.isnot(None),
         )
         .group_by(RequestLog.api_key_name)
@@ -117,9 +130,12 @@ async def stats_recent(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return []
     stmt = (
         select(RequestLog)
-        .where(RequestLog.owner_id == admin.id)
+        .where(RequestLog.service_id.in_(svc_ids))
         .order_by(RequestLog.created_at.desc())
         .limit(limit)
     )

@@ -6,6 +6,22 @@ from src.models.service_share import ServiceShare
 from src.models.admin_user import AdminUser
 
 
+async def get_accessible_service_ids(
+    session: AsyncSession, user_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """Returns list of service IDs the user owns or has shares for."""
+    own_result = await session.execute(
+        select(Service.id).where(Service.owner_id == user_id)
+    )
+    ids = [row[0] for row in own_result.all()]
+
+    shared_result = await session.execute(
+        select(ServiceShare.service_id).where(ServiceShare.shared_with_user_id == user_id)
+    )
+    ids.extend(row[0] for row in shared_result.all())
+    return ids
+
+
 async def check_service_access(
     session: AsyncSession, service_id: uuid.UUID, user_id: uuid.UUID
 ) -> tuple[Service | None, str]:

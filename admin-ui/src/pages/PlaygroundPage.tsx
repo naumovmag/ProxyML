@@ -115,7 +115,7 @@ export default function PlaygroundPage() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <FlaskConical className="h-6 w-6" />
-          <h2 className="text-2xl font-bold">Request Test</h2>
+          <h2 className="text-2xl font-bold">Playground</h2>
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-1">
           <Button

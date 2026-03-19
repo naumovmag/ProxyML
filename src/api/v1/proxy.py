@@ -1,5 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_api_key_or_fail
@@ -7,6 +8,7 @@ from src.services.service_registry import get_service_by_slug, get_service_by_id
 from src.proxy.base import registry
 from src.proxy.handler import GenericProxyHandler  # ensure default is registered
 from src.models.api_key import ApiKey
+from src.models.service_share import ServiceShare
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,9 +29,16 @@ async def proxy_request(
     if not service or not service.is_active:
         raise HTTPException(status_code=404, detail="Service not found")
 
-    # Multi-tenancy: API key must belong to the same owner as the service
+    # Multi-tenancy: API key owner must be the service owner or have a share
     if api_key.owner_id and service.owner_id and api_key.owner_id != service.owner_id:
-        raise HTTPException(status_code=403, detail="API key does not have access to this service")
+        share_result = await session.execute(
+            select(ServiceShare.id).where(
+                ServiceShare.service_id == service.id,
+                ServiceShare.shared_with_user_id == api_key.owner_id,
+            )
+        )
+        if share_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="API key does not have access to this service")
 
     handler = registry.get(service.service_type)
     if handler is None:

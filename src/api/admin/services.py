@@ -76,25 +76,22 @@ async def admin_update_service(
     svc, role = await check_service_access(session, service_id, admin.id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
-    # For shared users, redirect group_id changes to the share record
-    if role == "shared" and "group_id" in data.model_fields_set:
-        share_result = await session.execute(
-            select(ServiceShare).where(
-                ServiceShare.service_id == service_id,
-                ServiceShare.shared_with_user_id == admin.id,
+    # Shared users can only change their own group_id (via share record)
+    if role == "shared":
+        if "group_id" in data.model_fields_set:
+            share_result = await session.execute(
+                select(ServiceShare).where(
+                    ServiceShare.service_id == service_id,
+                    ServiceShare.shared_with_user_id == admin.id,
+                )
             )
-        )
-        share = share_result.scalar_one_or_none()
-        if share:
-            share.group_id = data.group_id
-            await session.commit()
-        # Remove group_id from service update — it belongs to the share
-        remaining = data.model_dump(exclude_unset=True)
-        remaining.pop("group_id", None)
-        if not remaining:
+            share = share_result.scalar_one_or_none()
+            if share:
+                share.group_id = data.group_id
+                await session.commit()
             await session.refresh(svc)
             return svc
-        data = ServiceUpdate(**remaining)
+        raise HTTPException(status_code=403, detail="Only the owner can edit this service")
     try:
         svc = await update_service(session, service_id, data)
     except FallbackValidationError as e:

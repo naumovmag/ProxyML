@@ -687,13 +687,13 @@ export default function ServicesPage() {
               )}
               <span className="ml-1">Check</span>
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Request Test"><FlaskConical className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Playground"><FlaskConical className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openCurl(s)} title="cURL"><Terminal className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => handleExportService(s)} title="Export"><Download className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Edit"><Edit className="h-4 w-4" /></Button>
             {isOwner && (
               <>
+                <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Edit"><Edit className="h-4 w-4" /></Button>
                 <Button variant="ghost" size="icon" onClick={() => openShareDialog(s)} title="Share"><Users className="h-4 w-4" /></Button>
                 <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} title="Delete"><Trash2 className="h-4 w-4 text-destructive" /></Button>
               </>

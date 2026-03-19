@@ -15,7 +15,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: '/services', label: 'Services', icon: Server },
     { path: '/api-keys', label: 'API Keys', icon: Key },
     { path: '/health', label: 'Health Check', icon: HeartPulse },
-    { path: '/playground', label: 'Request Test', icon: FlaskConical },
+    { path: '/playground', label: 'Playground', icon: FlaskConical },
     ...(user?.is_superadmin ? [
       { path: '/load-tests', label: 'Load Tests', icon: Gauge },
       { path: '/users', label: 'Users', icon: Users },
