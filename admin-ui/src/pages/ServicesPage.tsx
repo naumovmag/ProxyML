@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   fetchServices, createService, updateService, deleteService, checkServiceHealth,
   exportServices, importServices, fetchServiceGroups, createServiceGroup, updateServiceGroup, deleteServiceGroup,
-  Service, ServiceCreate, ServiceGroup, ServiceGroupCreate, HealthCheckResult,
+  shareService, getServiceShares, revokeShare, unshareService, searchUsers,
+  Service, ServiceCreate, ServiceGroup, ServiceGroupCreate, HealthCheckResult, ServiceShareRead, UserSearchResult,
 } from '@/api/services'
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors, useDroppable, closestCenter } from '@dnd-kit/core'
 import { useDraggable } from '@dnd-kit/core'
@@ -17,7 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode, FlaskConical } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode, FlaskConical, Users, UserMinus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiParseCurl, aiGenerateDescription } from '@/api/ai'
@@ -93,6 +94,13 @@ export default function ServicesPage() {
   const [curlImportText, setCurlImportText] = useState('')
   const [curlImportLoading, setCurlImportLoading] = useState(false)
   const [aiDescLoading, setAiDescLoading] = useState(false)
+
+  // Sharing
+  const [shareDialog, setShareDialog] = useState<{ open: boolean; service: Service | null }>({ open: false, service: null })
+  const [shareSearch, setShareSearch] = useState('')
+  const [shareSearchResults, setShareSearchResults] = useState<UserSearchResult[]>([])
+  const [shareList, setShareList] = useState<ServiceShareRead[]>([])
+  const [shareSearchLoading, setShareSearchLoading] = useState(false)
 
   const [confirmState, setConfirmState] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void }>({ open: false, title: '', description: '', onConfirm: () => {} })
 
@@ -537,6 +545,83 @@ export default function ServicesPage() {
     }
   }
 
+  // ─── Sharing ───
+  const openShareDialog = async (s: Service) => {
+    setShareDialog({ open: true, service: s })
+    setShareSearch('')
+    setShareSearchResults([])
+    try {
+      const { data } = await getServiceShares(s.id)
+      setShareList(data)
+    } catch {
+      setShareList([])
+    }
+  }
+
+  // Debounced user search
+  useEffect(() => {
+    if (!shareDialog.open || shareSearch.length < 2) {
+      setShareSearchResults([])
+      return
+    }
+    setShareSearchLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await searchUsers(shareSearch)
+        // Filter out already shared users
+        const sharedIds = new Set(shareList.map((s) => s.shared_with_user_id))
+        setShareSearchResults(data.filter((u) => !sharedIds.has(u.id)))
+      } catch {
+        setShareSearchResults([])
+      } finally {
+        setShareSearchLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [shareSearch, shareDialog.open])
+
+  const handleShareUser = async (userId: string) => {
+    if (!shareDialog.service) return
+    try {
+      const { data } = await shareService(shareDialog.service.id, userId)
+      setShareList((prev) => [...prev, data])
+      setShareSearchResults((prev) => prev.filter((u) => u.id !== userId))
+      toast.success('Service shared')
+      load()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to share')
+    }
+  }
+
+  const handleRevokeShare = async (userId: string) => {
+    if (!shareDialog.service) return
+    try {
+      await revokeShare(shareDialog.service.id, userId)
+      setShareList((prev) => prev.filter((s) => s.shared_with_user_id !== userId))
+      toast.success('Share revoked')
+      load()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to revoke')
+    }
+  }
+
+  const handleUnshare = (s: Service) => {
+    setConfirmState({
+      open: true,
+      title: 'Remove shared service',
+      description: `Remove "${s.name}" from your list? You will lose access to this service.`,
+      onConfirm: async () => {
+        try {
+          await unshareService(s.id)
+          toast.success('Service removed from your list')
+          load()
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'Failed to unshare')
+        }
+      },
+    })
+  }
+
   const handleGenerateDescription = async () => {
     if (!form.name || !form.base_url) return
     setAiDescLoading(true)
@@ -559,7 +644,7 @@ export default function ServicesPage() {
 
   const setField = (key: string, value: any) => setForm((prev) => ({ ...prev, [key]: value }))
 
-  // Group services
+  // Group services — backend returns correct group_id for shared services (from share record)
   const groupedServices = groups.map((g) => ({
     group: g,
     services: services.filter((s) => s.group_id === g.id),
@@ -568,6 +653,8 @@ export default function ServicesPage() {
 
   const renderServiceCard = (s: Service) => {
     const health = healthResults[s.id]
+    const isOwner = s.role !== 'shared'
+    const isShared = s.role === 'shared'
     return (
       <Card key={s.id}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -578,6 +665,12 @@ export default function ServicesPage() {
             {s.supports_streaming && <Badge variant="warning">SSE</Badge>}
             {s.cache_enabled && <Badge variant="outline">Cache</Badge>}
             {s.fallback_service_id && <Badge variant="outline">Fallback</Badge>}
+            {isShared && (
+              <Badge variant="secondary">Shared by {s.owner_display_name || s.owner_username}</Badge>
+            )}
+            {isOwner && (s.shared_with_count ?? 0) > 0 && (
+              <Badge variant="secondary">Shared ({s.shared_with_count})</Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => handleCheck(s.id)} disabled={health?.loading}>
@@ -599,7 +692,15 @@ export default function ServicesPage() {
             <Button variant="ghost" size="icon" onClick={() => handleExportService(s)} title="Export"><Download className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Edit"><Edit className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} title="Delete"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+            {isOwner && (
+              <>
+                <Button variant="ghost" size="icon" onClick={() => openShareDialog(s)} title="Share"><Users className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} title="Delete"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </>
+            )}
+            {isShared && (
+              <Button variant="ghost" size="icon" onClick={() => handleUnshare(s)} title="Remove from list"><UserMinus className="h-4 w-4 text-destructive" /></Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -1125,6 +1226,86 @@ export default function ServicesPage() {
                 {curlImportLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
                 {curlImportLoading ? 'Parsing...' : 'Parse & Create'}
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Service Dialog */}
+      <Dialog open={shareDialog.open} onOpenChange={(open) => setShareDialog((s) => ({ ...s, open }))}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Share "{shareDialog.service?.name}"
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* User search */}
+            <div className="space-y-2">
+              <Label>Search users</Label>
+              <div className="relative">
+                <Input
+                  value={shareSearch}
+                  onChange={(e) => setShareSearch(e.target.value)}
+                  placeholder="Type username or display name..."
+                />
+                {shareSearchLoading && (
+                  <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {shareSearchResults.length > 0 && (
+                <div className="border rounded-md divide-y max-h-40 overflow-y-auto">
+                  {shareSearchResults.map((u) => (
+                    <button
+                      key={u.id}
+                      className="w-full flex items-center justify-between px-3 py-2 hover:bg-accent text-left text-sm"
+                      onClick={() => handleShareUser(u.id)}
+                    >
+                      <div>
+                        <span className="font-medium">{u.username}</span>
+                        {u.display_name && <span className="text-muted-foreground ml-2">{u.display_name}</span>}
+                      </div>
+                      <Plus className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {shareSearch.length >= 2 && !shareSearchLoading && shareSearchResults.length === 0 && (
+                <p className="text-sm text-muted-foreground">No users found</p>
+              )}
+            </div>
+
+            {/* Current shares */}
+            {shareList.length > 0 && (
+              <div className="space-y-2">
+                <Label>Shared with</Label>
+                <div className="border rounded-md divide-y">
+                  {shareList.map((share) => (
+                    <div key={share.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <div>
+                        <span className="font-medium">{share.shared_with_username}</span>
+                        {share.shared_with_display_name && (
+                          <span className="text-muted-foreground ml-2">{share.shared_with_display_name}</span>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleRevokeShare(share.shared_with_user_id)}
+                        title="Revoke access"
+                      >
+                        <X className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button onClick={() => setShareDialog({ open: false, service: null })}>Done</Button>
             </div>
           </div>
         </DialogContent>

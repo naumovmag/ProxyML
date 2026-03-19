@@ -14,6 +14,7 @@ from src.models.service import Service
 from src.models.load_test import LoadTestTask, LoadTestResult
 from src.services.load_test_payloads import get_default_payload
 from src.services.load_test_scheduler import scheduler
+from src.services.service_access import check_service_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -157,10 +158,7 @@ async def create_load_test(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    result = await session.execute(
-        select(Service).where(Service.id == uuid.UUID(data.service_id), Service.owner_id == admin.id)
-    )
-    service = result.scalar_one_or_none()
+    service, role = await check_service_access(session, uuid.UUID(data.service_id), admin.id)
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 

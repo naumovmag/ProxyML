@@ -1,11 +1,12 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
-from src.api.deps import get_current_superadmin
+from src.api.deps import get_current_admin, get_current_superadmin
 from src.models.admin_user import AdminUser
 from src.schemas.auth import UserRead
+from src.schemas.service import UserSearchResult
 from pydantic import BaseModel
 
 
@@ -18,6 +19,34 @@ class UserUpdateAdmin(BaseModel):
 
 
 router = APIRouter()
+
+
+@router.get("/users-search", response_model=list[UserSearchResult])
+async def search_users(
+    q: str = Query(..., min_length=2),
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    pattern = f"%{q}%"
+    stmt = (
+        select(AdminUser)
+        .where(
+            AdminUser.id != admin.id,
+            AdminUser.is_active == True,
+            AdminUser.is_approved == True,
+            or_(
+                AdminUser.username.ilike(pattern),
+                AdminUser.display_name.ilike(pattern),
+            ),
+        )
+        .order_by(AdminUser.username)
+        .limit(20)
+    )
+    result = await session.execute(stmt)
+    return [
+        UserSearchResult(id=u.id, username=u.username, display_name=u.display_name, email=u.email)
+        for u in result.scalars().all()
+    ]
 
 
 @router.get("/users", response_model=list[UserRead])

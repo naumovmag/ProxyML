@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_current_admin
-from src.services.service_registry import get_service_by_id, list_services
+from src.services.service_access import check_service_access, list_accessible_services
 from src.services.health_checker import check_service_health
 from src.schemas.health import ServiceHealthCheck, HealthReportResponse, HealthReportItem
 from src.models.admin_user import AdminUser
@@ -18,8 +18,8 @@ async def check_connection(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    service = await get_service_by_id(session, service_id)
-    if not service or service.owner_id != admin.id:
+    service, role = await check_service_access(session, service_id, admin.id)
+    if not service:
         raise HTTPException(status_code=404, detail="Service not found")
     result = await check_service_health(service)
     return ServiceHealthCheck(
@@ -34,7 +34,8 @@ async def check_all_services(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    services = await list_services(session, active_only=False, owner_id=admin.id)
+    items_data = await list_accessible_services(session, admin.id)
+    services = [item["service"] for item in items_data]
 
     async def check_one(svc):
         result = await check_service_health(svc)

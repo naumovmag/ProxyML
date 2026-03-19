@@ -1,7 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_current_admin
@@ -9,11 +9,28 @@ from src.services.service_registry import (
     list_services, get_service_by_id, get_service_by_slug, create_service, update_service, delete_service,
     FallbackValidationError,
 )
-from src.schemas.service import ServiceCreate, ServiceUpdate, ServiceRead
+from src.services.service_access import check_service_access, list_accessible_services
+from src.schemas.service import ServiceCreate, ServiceUpdate, ServiceRead, ServiceShareCreate, ServiceShareRead
 from src.models.service_group import ServiceGroup
+from src.models.service_share import ServiceShare
 from src.models.admin_user import AdminUser
 
 router = APIRouter()
+
+
+def _service_to_read(item: dict) -> ServiceRead:
+    """Convert list_accessible_services item dict to ServiceRead."""
+    svc = item["service"]
+    updates = {
+        "role": item["role"],
+        "owner_username": item["owner_username"],
+        "owner_display_name": item["owner_display_name"],
+        "shared_with_count": item["shared_with_count"],
+    }
+    # For shared services, use the share's group_id (recipient's grouping)
+    if "override_group_id" in item:
+        updates["group_id"] = item["override_group_id"]
+    return ServiceRead.model_validate(svc, from_attributes=True).model_copy(update=updates)
 
 
 @router.get("/services", response_model=list[ServiceRead])
@@ -21,7 +38,8 @@ async def admin_list_services(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    return await list_services(session, owner_id=admin.id)
+    items = await list_accessible_services(session, admin.id)
+    return [_service_to_read(item) for item in items]
 
 
 @router.get("/services/{service_id}", response_model=ServiceRead)
@@ -30,8 +48,8 @@ async def admin_get_service(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    svc = await get_service_by_id(session, service_id)
-    if not svc or svc.owner_id != admin.id:
+    svc, role = await check_service_access(session, service_id, admin.id)
+    if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
     return svc
 
@@ -55,9 +73,28 @@ async def admin_update_service(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    svc = await get_service_by_id(session, service_id)
-    if not svc or svc.owner_id != admin.id:
+    svc, role = await check_service_access(session, service_id, admin.id)
+    if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
+    # For shared users, redirect group_id changes to the share record
+    if role == "shared" and "group_id" in data.model_fields_set:
+        share_result = await session.execute(
+            select(ServiceShare).where(
+                ServiceShare.service_id == service_id,
+                ServiceShare.shared_with_user_id == admin.id,
+            )
+        )
+        share = share_result.scalar_one_or_none()
+        if share:
+            share.group_id = data.group_id
+            await session.commit()
+        # Remove group_id from service update — it belongs to the share
+        remaining = data.model_dump(exclude_unset=True)
+        remaining.pop("group_id", None)
+        if not remaining:
+            await session.refresh(svc)
+            return svc
+        data = ServiceUpdate(**remaining)
     try:
         svc = await update_service(session, service_id, data)
     except FallbackValidationError as e:
@@ -75,6 +112,127 @@ async def admin_delete_service(
     if not svc or svc.owner_id != admin.id:
         raise HTTPException(status_code=404, detail="Service not found")
     await delete_service(session, service_id)
+
+
+# ─── Sharing endpoints ───
+
+
+@router.post("/services/{service_id}/shares", response_model=ServiceShareRead, status_code=201)
+async def share_service(
+    service_id: uuid.UUID,
+    data: ServiceShareCreate,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    svc = await get_service_by_id(session, service_id)
+    if not svc or svc.owner_id != admin.id:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if data.user_id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot share a service with yourself")
+    # Check target user exists and is active+approved
+    target_result = await session.execute(select(AdminUser).where(AdminUser.id == data.user_id))
+    target_user = target_result.scalar_one_or_none()
+    if not target_user or not target_user.is_active or not target_user.is_approved:
+        raise HTTPException(status_code=404, detail="Target user not found or inactive")
+    # Check not already shared
+    existing = await session.execute(
+        select(ServiceShare).where(
+            ServiceShare.service_id == service_id,
+            ServiceShare.shared_with_user_id == data.user_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Service already shared with this user")
+    share = ServiceShare(
+        service_id=service_id,
+        shared_with_user_id=data.user_id,
+        shared_by_user_id=admin.id,
+    )
+    session.add(share)
+    await session.commit()
+    await session.refresh(share)
+    # Fetch shared_by username
+    return ServiceShareRead(
+        id=share.id,
+        service_id=share.service_id,
+        shared_with_user_id=share.shared_with_user_id,
+        shared_with_username=target_user.username,
+        shared_with_display_name=target_user.display_name,
+        shared_by_user_id=share.shared_by_user_id,
+        shared_by_username=admin.username,
+        created_at=share.created_at,
+    )
+
+
+@router.get("/services/{service_id}/shares", response_model=list[ServiceShareRead])
+async def list_service_shares(
+    service_id: uuid.UUID,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    svc = await get_service_by_id(session, service_id)
+    if not svc or svc.owner_id != admin.id:
+        raise HTTPException(status_code=404, detail="Service not found")
+    result = await session.execute(
+        select(ServiceShare, AdminUser)
+        .join(AdminUser, AdminUser.id == ServiceShare.shared_with_user_id)
+        .where(ServiceShare.service_id == service_id)
+        .order_by(ServiceShare.created_at)
+    )
+    items = []
+    for share, user in result.all():
+        # Get shared_by username
+        by_result = await session.execute(select(AdminUser.username).where(AdminUser.id == share.shared_by_user_id))
+        by_username = by_result.scalar_one_or_none() or "unknown"
+        items.append(ServiceShareRead(
+            id=share.id,
+            service_id=share.service_id,
+            shared_with_user_id=share.shared_with_user_id,
+            shared_with_username=user.username,
+            shared_with_display_name=user.display_name,
+            shared_by_user_id=share.shared_by_user_id,
+            shared_by_username=by_username,
+            created_at=share.created_at,
+        ))
+    return items
+
+
+@router.delete("/services/{service_id}/shares/{user_id}", status_code=204)
+async def revoke_share(
+    service_id: uuid.UUID,
+    user_id: uuid.UUID,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    svc = await get_service_by_id(session, service_id)
+    if not svc or svc.owner_id != admin.id:
+        raise HTTPException(status_code=404, detail="Service not found")
+    result = await session.execute(
+        sa_delete(ServiceShare).where(
+            ServiceShare.service_id == service_id,
+            ServiceShare.shared_with_user_id == user_id,
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Share not found")
+    await session.commit()
+
+
+@router.delete("/services/{service_id}/unshare", status_code=204)
+async def unshare_service(
+    service_id: uuid.UUID,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    result = await session.execute(
+        sa_delete(ServiceShare).where(
+            ServiceShare.service_id == service_id,
+            ServiceShare.shared_with_user_id == admin.id,
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Share not found")
+    await session.commit()
 
 
 @router.get("/services-export")

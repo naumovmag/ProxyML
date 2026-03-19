@@ -79,6 +79,10 @@ class ServiceRead(ServiceBase):
     id: uuid.UUID
     slug: str = Field(..., max_length=255)
     owner_id: uuid.UUID | None = None
+    role: str = "owner"
+    owner_username: str | None = None
+    owner_display_name: str | None = None
+    shared_with_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -94,3 +98,25 @@ class ServiceCatalogItem(BaseModel):
     request_schema_hint: dict | None
 
     model_config = {"from_attributes": True}
+
+
+class ServiceShareCreate(BaseModel):
+    user_id: uuid.UUID
+
+
+class ServiceShareRead(BaseModel):
+    id: uuid.UUID
+    service_id: uuid.UUID
+    shared_with_user_id: uuid.UUID
+    shared_with_username: str
+    shared_with_display_name: str | None
+    shared_by_user_id: uuid.UUID
+    shared_by_username: str
+    created_at: datetime
+
+
+class UserSearchResult(BaseModel):
+    id: uuid.UUID
+    username: str
+    display_name: str | None
+    email: str | None

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_current_admin
 from src.services.service_registry import get_service_by_id
+from src.services.service_access import check_service_access
 from src.models.admin_user import AdminUser
 from src.models.playground import PlaygroundPreset, PlaygroundHistory
 from src.proxy.client import get_http_client
@@ -130,8 +131,8 @@ async def playground_execute(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    service = await get_service_by_id(session, data.service_id)
-    if not service or service.owner_id != admin.id:
+    service, role = await check_service_access(session, data.service_id, admin.id)
+    if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
     target_url = _build_target(service, data.path)
@@ -245,8 +246,8 @@ async def playground_upload(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    service = await get_service_by_id(session, uuid.UUID(service_id))
-    if not service or service.owner_id != admin.id:
+    service, role = await check_service_access(session, uuid.UUID(service_id), admin.id)
+    if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
     target_url = _build_target(service, path)

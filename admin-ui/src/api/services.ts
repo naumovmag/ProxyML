@@ -17,6 +17,7 @@ export interface ServiceGroupCreate {
 export interface Service {
   group_id: string | null
   id: string
+  owner_id: string
   name: string
   slug: string
   service_type: string
@@ -38,8 +39,30 @@ export interface Service {
   fallback_service_id: string | null
   fallback_on_statuses: number[] | null
   is_active: boolean
+  role: 'owner' | 'shared'
+  owner_username?: string
+  owner_display_name?: string
+  shared_with_count?: number
   created_at: string
   updated_at: string
+}
+
+export interface ServiceShareRead {
+  id: string
+  service_id: string
+  shared_with_user_id: string
+  shared_with_username: string
+  shared_with_display_name: string | null
+  shared_by_user_id: string
+  shared_by_username: string
+  created_at: string
+}
+
+export interface UserSearchResult {
+  id: string
+  username: string
+  display_name: string | null
+  email: string | null
 }
 
 export interface ServiceCreate {
@@ -126,3 +149,19 @@ export const importServices = (file: File) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
+
+// Sharing
+export const shareService = (serviceId: string, userId: string) =>
+  api.post<ServiceShareRead>(`/admin/services/${serviceId}/shares`, { user_id: userId })
+
+export const getServiceShares = (serviceId: string) =>
+  api.get<ServiceShareRead[]>(`/admin/services/${serviceId}/shares`)
+
+export const revokeShare = (serviceId: string, userId: string) =>
+  api.delete(`/admin/services/${serviceId}/shares/${userId}`)
+
+export const unshareService = (serviceId: string) =>
+  api.delete(`/admin/services/${serviceId}/unshare`)
+
+export const searchUsers = (query: string) =>
+  api.get<UserSearchResult[]>(`/admin/users-search`, { params: { q: query } })
