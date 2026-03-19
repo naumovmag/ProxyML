@@ -25,7 +25,7 @@ class ServiceGroupRead(BaseModel):
 
 class ServiceBase(BaseModel):
     name: str = Field(..., max_length=255)
-    slug: str = Field(..., max_length=255, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+    slug: str = Field(..., max_length=255, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]$")
     group_id: uuid.UUID | None = None
     service_type: str = Field(default="custom", max_length=50)
     base_url: str
