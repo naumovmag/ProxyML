@@ -36,10 +36,17 @@ async def get_current_superadmin(
     return admin
 
 async def get_api_key_or_fail(
-    x_api_key: str = Header(..., alias="X-Api-Key"),
+    x_api_key: str | None = Header(None, alias="X-Api-Key"),
+    authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_async_session),
 ):
-    api_key = await validate_api_key(session, x_api_key)
+    raw_key = x_api_key
+    if not raw_key and authorization:
+        if authorization.lower().startswith("bearer "):
+            raw_key = authorization[7:].strip()
+    if not raw_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required (X-Api-Key header or Authorization: Bearer <key>)")
+    api_key = await validate_api_key(session, raw_key)
     if api_key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired API key")
     return api_key
