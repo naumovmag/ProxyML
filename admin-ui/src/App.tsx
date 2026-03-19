@@ -43,7 +43,7 @@ export default function App() {
                   <Route path="/api-keys" element={<ApiKeysPage />} />
                   <Route path="/health" element={<HealthPage />} />
                   <Route path="/playground" element={<PlaygroundPage />} />
-                  <Route path="/load-tests" element={<LoadTestsPage />} />
+                  <Route path="/load-tests" element={<SuperadminRoute><LoadTestsPage /></SuperadminRoute>} />
                   <Route path="/users" element={<SuperadminRoute><UsersPage /></SuperadminRoute>} />
                   <Route path="/settings" element={<SuperadminRoute><SettingsPage /></SuperadminRoute>} />
                 </Routes>
