@@ -19,7 +19,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         'service_groups',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, server_default=sa.text('gen_random_uuid()')),
+        sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('name', sa.String(255), unique=True, nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('sort_order', sa.Integer(), nullable=False, server_default=sa.text('0')),
