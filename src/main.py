@@ -71,7 +71,13 @@ async def lifespan(app: FastAPI):
             await session.commit()
     except Exception as e:
         logger.warning(f"Could not seed admin user: {e}")
+
+    from src.services.load_test_scheduler import scheduler as load_test_scheduler
+    await load_test_scheduler.start()
+
     yield
+
+    await load_test_scheduler.stop()
     await close_http_client()
     await close_redis()
     logger.info("ProxyML stopped.")

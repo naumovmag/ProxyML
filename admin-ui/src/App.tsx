@@ -10,6 +10,7 @@ import HealthPage from './pages/HealthPage'
 import PlaygroundPage from './pages/PlaygroundPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
+import LoadTestsPage from './pages/LoadTestsPage'
 import Layout from './components/layout/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -42,6 +43,7 @@ export default function App() {
                   <Route path="/api-keys" element={<ApiKeysPage />} />
                   <Route path="/health" element={<HealthPage />} />
                   <Route path="/playground" element={<PlaygroundPage />} />
+                  <Route path="/load-tests" element={<LoadTestsPage />} />
                   <Route path="/users" element={<SuperadminRoute><UsersPage /></SuperadminRoute>} />
                   <Route path="/settings" element={<SuperadminRoute><SettingsPage /></SuperadminRoute>} />
                 </Routes>
