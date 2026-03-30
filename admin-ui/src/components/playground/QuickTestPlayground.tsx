@@ -14,6 +14,7 @@ import {
 import { Loader2, Send, Plus, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 import { executeQuickTest, PlaygroundResponse } from '@/api/playground'
+import { parseCurl } from '@/utils/curl-parser'
 import ResponseMeta from './ResponseMeta'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -22,65 +23,6 @@ const AUTH_TYPES = [
   { value: 'bearer', label: 'Bearer Token' },
   { value: 'header', label: 'Custom Header' },
 ]
-
-function parseCurl(raw: string): {
-  url?: string; method?: string; headers: Record<string, string>; body?: string
-} {
-  // Normalize: join line continuations, collapse whitespace
-  const s = raw.replace(/\\\s*\n/g, ' ').replace(/\s+/g, ' ').trim()
-  const result: { url?: string; method?: string; headers: Record<string, string>; body?: string } = { headers: {} }
-
-  // Extract method: -X POST or --request POST
-  const methodMatch = s.match(/(?:-X|--request)\s+([A-Z]+)/i)
-  if (methodMatch) result.method = methodMatch[1].toUpperCase()
-
-  // Extract headers: -H 'Key: Value' or -H "Key: Value"
-  const headerRegex = /-H\s+['"](.*?)['"]/gi
-  let hm
-  while ((hm = headerRegex.exec(s)) !== null) {
-    const idx = hm[1].indexOf(':')
-    if (idx > 0) {
-      result.headers[hm[1].slice(0, idx).trim()] = hm[1].slice(idx + 1).trim()
-    }
-  }
-  // Also --header
-  const headerRegex2 = /--header\s+['"](.*?)['"]/gi
-  while ((hm = headerRegex2.exec(s)) !== null) {
-    const idx = hm[1].indexOf(':')
-    if (idx > 0) {
-      result.headers[hm[1].slice(0, idx).trim()] = hm[1].slice(idx + 1).trim()
-    }
-  }
-
-  // Extract body: -d 'data' or --data 'data' or --data-raw 'data'
-  const bodyMatch = s.match(/(?:-d|--data|--data-raw)\s+'([\s\S]*?)'/i)
-    || s.match(/(?:-d|--data|--data-raw)\s+"([\s\S]*?)"/i)
-  if (bodyMatch) result.body = bodyMatch[1]
-
-  // Extract URL: first try explicit http(s)://, then find curl's positional argument
-  let urlMatch = s.match(/['"]?(https?:\/\/[^\s'"]+)['"]?/)
-  if (urlMatch) {
-    result.url = urlMatch[1]
-  } else {
-    // Strip known flags with their values, then find the remaining positional arg (the URL)
-    const stripped = s
-      .replace(/^curl\s+/, '')
-      .replace(/(?:-X|--request|-H|--header|-d|--data|--data-raw|--data-binary|-u|--user|-o|--output|-A|--user-agent)\s+(?:'[^']*'|"[^"]*"|\S+)/gi, '')
-      .replace(/(?:--location|--compressed|-s|--silent|-k|--insecure|-v|--verbose|-L|-S|-f)/gi, '')
-      .trim()
-    const bareMatch = stripped.match(/['"]?([^\s'"]+)['"]?/)
-    if (bareMatch) {
-      let u = bareMatch[1]
-      if (!/^https?:\/\//i.test(u)) u = 'http://' + u
-      result.url = u
-    }
-  }
-
-  // Infer method from body if not explicit
-  if (!result.method) result.method = result.body ? 'POST' : 'GET'
-
-  return result
-}
 
 interface Props {
   aiEnabled?: boolean

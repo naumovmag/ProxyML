@@ -18,11 +18,13 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Terminal, Check, Sparkles, FileCode, FlaskConical, Users, UserMinus, X } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Sparkles, FileCode, FlaskConical, Users, UserMinus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
-import { aiParseCurl, aiGenerateDescription } from '@/api/ai'
+import { aiGenerateDescription } from '@/api/ai'
+import { parseCurlToServiceConfig } from '@/utils/curl-parser'
 import api from '@/api/client'
+import CurlGenerator from '@/components/playground/CurlGenerator'
 
 function DroppableZone({ id, children, isOver }: { id: string; children: React.ReactNode; isOver?: boolean }) {
   const { setNodeRef, isOver: over } = useDroppable({ id })
@@ -79,20 +81,10 @@ export default function ServicesPage() {
   const [modalHealth, setModalHealth] = useState<{ loading: boolean; result?: HealthCheckResult } | null>(null)
   const [tagsInput, setTagsInput] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
-  const [curlDialog, setCurlDialog] = useState<{ open: boolean; curl: string; service: Service | null }>({ open: false, curl: '', service: null })
-  const [curlCopied, setCurlCopied] = useState(false)
-  const [curlKeys, setCurlKeys] = useState<{ id: string; name: string; key_prefix: string; is_active: boolean }[]>([])
-  const [curlSelectedKeyId, setCurlSelectedKeyId] = useState('')
-  const [curlApiKey, setCurlApiKey] = useState('')
-  const [curlCreatingKey, setCurlCreatingKey] = useState(false)
-  const [curlNewKeyName, setCurlNewKeyName] = useState('')
-  const [curlRawKeysCache] = useState<Map<string, string>>(() => new Map())
-
   // AI
   const [aiSettings, setAiSettings] = useState<SystemSettings | null>(null)
   const [curlImportDialog, setCurlImportDialog] = useState(false)
   const [curlImportText, setCurlImportText] = useState('')
-  const [curlImportLoading, setCurlImportLoading] = useState(false)
   const [aiDescLoading, setAiDescLoading] = useState(false)
 
   // Sharing
@@ -406,142 +398,36 @@ export default function ServicesPage() {
     })
   }
 
-  const generateCurl = (s: Service, keyValue?: string) => {
-    const origin = window.location.origin
-    const baseProxy = `${origin}/proxy/${s.slug}`
-    const keyPlaceholder = keyValue || 'YOUR_API_KEY'
-
-    const lines: string[] = []
-
-    if (s.service_type === 'llm_chat') {
-      const model = s.default_model || 'your-model'
-      lines.push(`curl -X POST '${baseProxy}/v1/chat/completions' \\`)
-      lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
-      lines.push(`  -d '{`)
-      lines.push(`  "model": "${model}",`)
-      lines.push(`  "messages": [{"role": "user", "content": "Hello"}],`)
-      lines.push(`  "max_tokens": 100`)
-      lines.push(`}'`)
-    } else if (s.service_type === 'embedding') {
-      const model = s.default_model || 'your-model'
-      lines.push(`curl -X POST '${baseProxy}/v1/embeddings' \\`)
-      lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
-      lines.push(`  -d '{`)
-      lines.push(`  "model": "${model}",`)
-      lines.push(`  "input": "Hello world"`)
-      lines.push(`}'`)
-    } else if (s.service_type === 'stt') {
-      lines.push(`curl -X POST '${baseProxy}/v1/audio/transcriptions' \\`)
-      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
-      lines.push(`  -F 'file=@audio.wav' \\`)
-      lines.push(`  -F 'model=${s.default_model || 'whisper-1'}'`)
-    } else if (s.service_type === 'tts') {
-      lines.push(`curl -X POST '${baseProxy}/v1/audio/speech' \\`)
-      lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
-      lines.push(`  -d '{`)
-      lines.push(`  "model": "${s.default_model || 'tts-1'}",`)
-      lines.push(`  "input": "Hello world",`)
-      lines.push(`  "voice": "alloy"`)
-      lines.push(`}' \\`)
-      lines.push(`  --output speech.mp3`)
-    } else {
-      lines.push(`curl -X POST '${baseProxy}/your-path' \\`)
-      lines.push(`  -H 'Content-Type: application/json' \\`)
-      lines.push(`  -H 'X-Api-Key: ${keyPlaceholder}' \\`)
-      lines.push(`  -d '{"key": "value"}'`)
-    }
-
-    return lines.join('\n')
-  }
-
-  const openCurl = (s: Service) => {
-    setCurlDialog({ open: true, curl: generateCurl(s), service: s })
-    setCurlCopied(false)
-    setCurlApiKey('')
-    setCurlSelectedKeyId('')
-    setCurlCreatingKey(false)
-    setCurlNewKeyName('')
-  }
-
-  const copyCurl = () => {
-    navigator.clipboard.writeText(curlDialog.curl)
-    setCurlCopied(true)
-    setTimeout(() => setCurlCopied(false), 2000)
-  }
-
-  // Load API keys when curl dialog opens
-  useEffect(() => {
-    if (curlDialog.open && curlDialog.service) {
-      api.get<{ id: string; name: string; key_prefix: string; is_active: boolean }[]>(
-        `/admin/api-keys/by-service/${curlDialog.service.slug}`
-      )
-        .then(({ data }) => setCurlKeys(data))
-        .catch(() => {})
-    }
-  }, [curlDialog.open, curlDialog.service?.slug])
-
-  // Regenerate curl when apiKey changes
-  useEffect(() => {
-    if (curlDialog.open && curlDialog.service) {
-      setCurlDialog((prev) => ({ ...prev, curl: generateCurl(prev.service!, curlApiKey || undefined) }))
-    }
-  }, [curlApiKey])
-
-  const handleCurlCreateKey = async () => {
-    if (!curlNewKeyName.trim() || !curlDialog.service) return
-    try {
-      const { data } = await api.post<{ raw_key: string; id: string; name: string; key_prefix: string; is_active: boolean }>(
-        '/admin/api-keys',
-        { name: curlNewKeyName.trim(), allowed_services: [curlDialog.service.slug] },
-      )
-      curlRawKeysCache.set(data.id, data.raw_key)
-      setCurlApiKey(data.raw_key)
-      setCurlKeys((prev) => [...prev, { id: data.id, name: data.name, key_prefix: data.key_prefix, is_active: data.is_active }])
-      setCurlSelectedKeyId(data.id)
-      setCurlCreatingKey(false)
-      setCurlNewKeyName('')
-      toast.success(`Key created: ${data.key_prefix}...`)
-    } catch {
-      toast.error('Failed to create key')
-    }
-  }
-
-  const handleCurlImport = async () => {
+  const handleCurlImport = () => {
     if (!curlImportText.trim()) return
-    setCurlImportLoading(true)
     try {
-      const { data } = await aiParseCurl(curlImportText)
+      const data = parseCurlToServiceConfig(curlImportText)
       setEditId(null)
       setModalHealth(null)
       setForm({
         ...emptyForm,
-        name: (data.name as string) || '',
-        slug: (data.slug as string) || '',
-        base_url: (data.base_url as string) || '',
-        service_type: (data.service_type as string) || 'custom',
-        auth_type: (data.auth_type as string) || 'none',
-        auth_token: (data.auth_token as string) || null,
-        auth_header_name: (data.auth_header_name as string) || 'Authorization',
-        default_model: (data.default_model as string) || null,
-        supports_streaming: (data.supports_streaming as boolean) || false,
-        extra_headers: (data.extra_headers as Record<string, string>) || null,
-        health_check_path: (data.health_check_path as string) || null,
-        description: (data.description as string) || null,
-        timeout_seconds: (data.timeout_seconds as number) || 120,
-        tags: (data.tags as string[]) || [],
+        name: data.name,
+        slug: data.slug,
+        base_url: data.base_url,
+        service_type: data.service_type,
+        auth_type: data.auth_type,
+        auth_token: data.auth_token,
+        auth_header_name: data.auth_header_name,
+        default_model: data.default_model,
+        supports_streaming: data.supports_streaming,
+        extra_headers: data.extra_headers,
+        health_check_path: data.health_check_path,
+        description: data.description,
+        timeout_seconds: data.timeout_seconds,
+        tags: data.tags,
       })
-      setTagsInput(((data.tags as string[]) || []).join(', '))
+      setTagsInput(data.tags.join(', '))
       setCurlImportDialog(false)
       setCurlImportText('')
       setDialogOpen(true)
       toast.success('cURL parsed — review and save')
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to parse cURL')
-    } finally {
-      setCurlImportLoading(false)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to parse cURL')
     }
   }
 
@@ -688,7 +574,7 @@ export default function ServicesPage() {
               <span className="ml-1">Check</span>
             </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Playground"><FlaskConical className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => openCurl(s)} title="cURL"><Terminal className="h-4 w-4" /></Button>
+            <CurlGenerator service={s} triggerVariant="icon" />
             <Button variant="ghost" size="icon" onClick={() => handleExportService(s)} title="Export"><Download className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
             {isOwner && (
@@ -730,11 +616,9 @@ export default function ServicesPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-2" />Export</Button>
           <Button variant="outline" onClick={handleImport}><Upload className="h-4 w-4 mr-2" />Import</Button>
-          {aiSettings?.ai_enabled && (
-            <Button variant="outline" onClick={() => setCurlImportDialog(true)}>
-              <FileCode className="h-4 w-4 mr-2" />From cURL
-            </Button>
-          )}
+          <Button variant="outline" onClick={() => setCurlImportDialog(true)}>
+            <FileCode className="h-4 w-4 mr-2" />From cURL
+          </Button>
           <Button variant="outline" onClick={openCreateGroup}><FolderPlus className="h-4 w-4 mr-2" />Add Group</Button>
           <Button onClick={() => openCreate()}><Plus className="h-4 w-4 mr-2" />Add Service</Button>
         </div>
@@ -1116,101 +1000,18 @@ export default function ServicesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* cURL Dialog */}
-      <Dialog open={curlDialog.open} onOpenChange={(open) => setCurlDialog((s) => ({ ...s, open }))}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>cURL Command</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {/* API Key selection */}
-            <div className="space-y-2">
-              <Label className="text-sm">API Key</Label>
-              <div className="flex gap-2">
-                {curlKeys.length > 0 && (
-                  <Select
-                    value={curlSelectedKeyId}
-                    onValueChange={(id) => {
-                      setCurlSelectedKeyId(id)
-                      const cached = curlRawKeysCache.get(id)
-                      if (cached) {
-                        setCurlApiKey(cached)
-                      } else {
-                        const key = curlKeys.find((k) => k.id === id)
-                        if (key) {
-                          setCurlApiKey('')
-                          toast.info(`Key ${key.key_prefix}... — paste your raw key value below, or create a new key`)
-                        }
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="w-56">
-                      <SelectValue placeholder="Select existing key" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {curlKeys.map((k) => (
-                        <SelectItem key={k.id} value={k.id}>
-                          {k.name} ({k.key_prefix}...)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Input
-                  value={curlApiKey}
-                  onChange={(e) => setCurlApiKey(e.target.value)}
-                  placeholder="Paste your API key or create new"
-                  className="flex-1 font-mono text-xs"
-                />
-              </div>
-              <div className="flex gap-2">
-                {curlCreatingKey ? (
-                  <div className="flex gap-1 items-center">
-                    <Input
-                      value={curlNewKeyName}
-                      onChange={(e) => setCurlNewKeyName(e.target.value)}
-                      placeholder="Key name"
-                      className="h-8 w-48 text-xs"
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleCurlCreateKey() }}
-                      autoFocus
-                    />
-                    <Button size="sm" onClick={handleCurlCreateKey} className="h-8 text-xs">Create</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setCurlCreatingKey(false)} className="h-8 text-xs">Cancel</Button>
-                  </div>
-                ) : (
-                  <Button variant="ghost" size="sm" onClick={() => setCurlCreatingKey(true)} className="text-xs">
-                    <Plus className="h-3 w-3 mr-1" />Create new key{curlDialog.service ? ` for ${curlDialog.service.slug}` : ''}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <pre className="bg-muted p-4 rounded-md text-sm font-mono whitespace-pre-wrap break-all overflow-auto max-h-80">
-              {curlDialog.curl}
-            </pre>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={copyCurl}>
-                {curlCopied ? <Check className="h-4 w-4 mr-2 text-green-500" /> : <Copy className="h-4 w-4 mr-2" />}
-                {curlCopied ? 'Copied' : 'Copy'}
-              </Button>
-              <Button onClick={() => setCurlDialog({ open: false, curl: '', service: null })}>Close</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* cURL Import Dialog */}
       <Dialog open={curlImportDialog} onOpenChange={setCurlImportDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
+              <FileCode className="h-5 w-5 text-primary" />
               Create Service from cURL
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Paste a cURL command and AI will parse it into a service configuration.
+              Paste a cURL command to auto-fill service configuration.
             </p>
             <textarea
               className="w-full h-40 rounded-md border bg-background p-3 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1222,9 +1023,9 @@ export default function ServicesPage() {
               <Button variant="outline" onClick={() => { setCurlImportDialog(false); setCurlImportText('') }}>
                 Cancel
               </Button>
-              <Button onClick={handleCurlImport} disabled={curlImportLoading || !curlImportText.trim()}>
-                {curlImportLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                {curlImportLoading ? 'Parsing...' : 'Parse & Create'}
+              <Button onClick={handleCurlImport} disabled={!curlImportText.trim()}>
+                <FileCode className="h-4 w-4 mr-2" />
+                Parse & Create
               </Button>
             </div>
           </div>

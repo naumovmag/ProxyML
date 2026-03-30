@@ -35,9 +35,38 @@ interface Props {
   path?: string
   body?: unknown
   headers?: Record<string, string>
+  triggerVariant?: 'button' | 'icon'
 }
 
-export default function CurlGenerator({ service, method = 'POST', path = '', body, headers }: Props) {
+function getTemplateForService(service: Service) {
+  const model = service.default_model || 'your-model'
+  switch (service.service_type) {
+    case 'llm_chat':
+      return {
+        path: 'v1/chat/completions',
+        body: { model, messages: [{ role: 'user', content: 'Hello' }], max_tokens: 100 },
+      }
+    case 'embedding':
+      return {
+        path: 'v1/embeddings',
+        body: { model, input: 'Hello world' },
+      }
+    case 'stt':
+      return { path: 'v1/audio/transcriptions', body: null }
+    case 'tts':
+      return {
+        path: 'v1/audio/speech',
+        body: { model: service.default_model || 'tts-1', input: 'Hello world', voice: 'alloy' },
+      }
+    default:
+      return {
+        path: 'your-path',
+        body: { key: 'value' },
+      }
+  }
+}
+
+export default function CurlGenerator({ service, method = 'POST', path, body, headers, triggerVariant = 'button' }: Props) {
   const [open, setOpen] = useState(false)
   const [keys, setKeys] = useState<ApiKeyInfo[]>([])
   const [apiKey, setApiKey] = useState('')
@@ -46,6 +75,12 @@ export default function CurlGenerator({ service, method = 'POST', path = '', bod
   const [creating, setCreating] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [rawKeysCache] = useState<Map<string, string>>(() => new Map())
+
+  // If path/body not provided, use template based on service_type
+  const useTemplate = path === undefined && body === undefined
+  const template = useTemplate ? getTemplateForService(service) : null
+  const effectivePath = path ?? template?.path ?? ''
+  const effectiveBody = body ?? template?.body
 
   useEffect(() => {
     if (open) {
@@ -75,25 +110,41 @@ export default function CurlGenerator({ service, method = 'POST', path = '', bod
   }
 
   const proxyUrl = `${window.location.origin}/proxy/${service.slug}`
-  const fullUrl = path ? `${proxyUrl}/${path.replace(/^\//, '')}` : proxyUrl
+  const fullUrl = effectivePath ? `${proxyUrl}/${effectivePath.replace(/^\//, '')}` : proxyUrl
+  const keyPlaceholder = apiKey || '<YOUR_API_KEY>'
+
+  const isStt = useTemplate && service.service_type === 'stt'
+  const isTts = useTemplate && service.service_type === 'tts'
 
   const buildCurl = () => {
     const parts: string[] = [`curl -X ${method}`]
     parts.push(`  '${fullUrl}'`)
-    parts.push(`  -H 'Content-Type: application/json'`)
-    parts.push(`  -H 'X-Api-Key: ${apiKey || '<YOUR_API_KEY>'}'`)
 
-    if (headers) {
-      for (const [k, v] of Object.entries(headers)) {
-        if (k.toLowerCase() !== 'content-type') {
-          parts.push(`  -H '${k}: ${v}'`)
+    if (isStt) {
+      // STT: multipart form, no Content-Type header
+      parts.push(`  -H 'X-Api-Key: ${keyPlaceholder}'`)
+      parts.push(`  -F 'file=@audio.wav'`)
+      parts.push(`  -F 'model=${service.default_model || 'whisper-1'}'`)
+    } else {
+      parts.push(`  -H 'Content-Type: application/json'`)
+      parts.push(`  -H 'X-Api-Key: ${keyPlaceholder}'`)
+
+      if (headers) {
+        for (const [k, v] of Object.entries(headers)) {
+          if (k.toLowerCase() !== 'content-type') {
+            parts.push(`  -H '${k}: ${v}'`)
+          }
         }
       }
-    }
 
-    if (body && method !== 'GET' && method !== 'DELETE') {
-      const bodyStr = typeof body === 'string' ? body : JSON.stringify(body, null, 2)
-      parts.push(`  -d '${bodyStr}'`)
+      if (effectiveBody && method !== 'GET' && method !== 'DELETE') {
+        const bodyStr = typeof effectiveBody === 'string' ? effectiveBody : JSON.stringify(effectiveBody, null, 2)
+        parts.push(`  -d '${bodyStr}'`)
+      }
+
+      if (isTts) {
+        parts.push(`  --output speech.mp3`)
+      }
     }
 
     return parts.join(' \\\n')
@@ -109,10 +160,16 @@ export default function CurlGenerator({ service, method = 'POST', path = '', bod
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Terminal className="h-4 w-4 mr-1" />
-          cURL
-        </Button>
+        {triggerVariant === 'icon' ? (
+          <Button variant="ghost" size="icon" title="cURL">
+            <Terminal className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm">
+            <Terminal className="h-4 w-4 mr-1" />
+            cURL
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
