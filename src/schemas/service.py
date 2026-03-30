@@ -33,7 +33,7 @@ class ServiceBase(BaseModel):
     auth_token: str | None = None
     auth_header_name: str = "Authorization"
     default_model: str | None = None
-    timeout_seconds: int = 120
+    timeout_seconds: int = 0
     supports_streaming: bool = False
     extra_headers: dict | None = None
     health_check_path: str | None = None

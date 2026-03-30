@@ -177,7 +177,7 @@ export function parseCurlToServiceConfig(raw: string): ServiceConfig {
     : null
 
   // Timeout
-  const timeout_seconds = service_type === 'llm_chat' ? 180 : 120
+  const timeout_seconds = 0
 
   // Tags
   const tagsMap: Record<string, string[]> = {

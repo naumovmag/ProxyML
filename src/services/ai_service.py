@@ -108,7 +108,7 @@ Return ONLY a valid JSON object with these fields:
 - extra_headers: object or null, any non-standard headers (exclude Content-Type, Authorization, Host)
 - health_check_path: string or null, suggested health check (e.g. "/v1/models" for OpenAI-compatible)
 - description: string, brief description
-- timeout_seconds: integer, suggested timeout (default 120, longer for LLM)
+- timeout_seconds: integer, timeout in seconds (0 = no timeout/unlimited, default 0)
 - tags: array of strings, relevant tags
 
 Rules:

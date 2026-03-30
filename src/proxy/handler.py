@@ -1,13 +1,12 @@
 import json
 import time
 import logging
-import httpx
 from fastapi import Request
 from fastapi.responses import StreamingResponse, Response
 from src.models.service import Service
 from src.models.api_key import ApiKey
 from src.proxy.base import AbstractProxyHandler, registry
-from src.proxy.client import get_http_client
+from src.proxy.client import get_http_client, build_service_timeout
 from src.proxy.streaming import stream_response
 from src.services.request_logger import log_request_fire_and_forget
 from src.cache.proxy_cache import get_cached_response, set_cached_response
@@ -105,7 +104,7 @@ class GenericProxyHandler(AbstractProxyHandler):
             sep = "&" if "?" in target_url else "?"
             target_url += f"{sep}api_key={service.auth_token or ''}"
 
-        timeout = httpx.Timeout(float(service.timeout_seconds), connect=10.0)
+        timeout = build_service_timeout(service.timeout_seconds)
 
         try:
             if is_streaming:

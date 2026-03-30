@@ -19,7 +19,7 @@ class Service(Base):
     auth_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_header_name: Mapped[str] = mapped_column(String(255), nullable=False, default="Authorization")
     default_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     supports_streaming: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     extra_headers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     health_check_path: Mapped[str | None] = mapped_column(String(255), nullable=True)

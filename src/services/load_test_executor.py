@@ -7,7 +7,7 @@ import httpx
 
 from src.models.load_test import LoadTestResult
 from src.services.load_test_payloads import get_default_payload
-from src.proxy.client import get_http_client
+from src.proxy.client import get_http_client, build_service_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ async def execute_single_test(task, service) -> LoadTestResult:
         else:
             content = json.dumps(body).encode()
 
-    timeout = httpx.Timeout(float(service.timeout_seconds), connect=10.0)
+    timeout = build_service_timeout(service.timeout_seconds)
     client = await get_http_client()
     start = time.monotonic()
 

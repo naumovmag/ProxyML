@@ -14,7 +14,7 @@ from src.services.service_registry import get_service_by_id
 from src.services.service_access import check_service_access
 from src.models.admin_user import AdminUser
 from src.models.playground import PlaygroundPreset, PlaygroundHistory
-from src.proxy.client import get_http_client
+from src.proxy.client import get_http_client, build_service_timeout
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -88,7 +88,7 @@ async def playground_quick_test(
         else:
             content = json.dumps(data.body).encode()
 
-    timeout = httpx.Timeout(600.0, connect=10.0)
+    timeout = httpx.Timeout(None, connect=10.0)
     client = await get_http_client()
     start = time.monotonic()
 
@@ -157,7 +157,7 @@ async def playground_execute(
         else:
             content = json.dumps(data.body).encode()
 
-    timeout = httpx.Timeout(float(service.timeout_seconds), connect=10.0)
+    timeout = build_service_timeout(service.timeout_seconds)
     client = await get_http_client()
     start = time.monotonic()
 
@@ -261,7 +261,7 @@ async def playground_upload(
         sep = "&" if "?" in target_url else "?"
         target_url += f"{sep}{query_suffix}"
 
-    timeout = httpx.Timeout(float(service.timeout_seconds), connect=10.0)
+    timeout = build_service_timeout(service.timeout_seconds)
     client = await get_http_client()
     start = time.monotonic()
 

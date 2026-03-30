@@ -62,7 +62,7 @@ const AUTH_TYPES = ['none', 'bearer', 'header', 'query_param']
 const emptyForm: ServiceCreate = {
   name: '', slug: '', service_type: 'custom', base_url: '', auth_type: 'none',
   auth_token: null, auth_header_name: 'Authorization', default_model: null,
-  timeout_seconds: 120, supports_streaming: false, extra_headers: null,
+  timeout_seconds: 0, supports_streaming: false, extra_headers: null,
   health_check_path: null, health_check_method: 'GET', description: null,
   tags: [], request_schema_hint: null, cache_enabled: false,
   cache_ttl_seconds: 86400, fallback_service_id: null,
@@ -794,7 +794,8 @@ export default function ServicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Timeout (seconds)</Label>
-                <Input type="number" value={form.timeout_seconds} onChange={(e) => setField('timeout_seconds', parseInt(e.target.value) || 120)} />
+                <Input type="number" min={0} value={form.timeout_seconds} onChange={(e) => { const val = parseInt(e.target.value); setField('timeout_seconds', isNaN(val) ? 0 : Math.max(0, val)); }} />
+                <p className="text-xs text-muted-foreground">0 = без ограничения</p>
               </div>
             </div>
 
