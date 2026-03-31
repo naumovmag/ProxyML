@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_async_session
 from src.api.deps import get_current_admin
@@ -124,6 +124,83 @@ async def stats_by_key(
             "error_count": row.error_count,
             "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
         }
+        for row in result.all()
+    ]
+
+
+@router.get("/stats/timeseries")
+async def stats_timeseries(
+    hours: int = Query(default=24, ge=1, le=720),
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return []
+
+    if hours <= 6:
+        bucket = "minute"
+    elif hours <= 168:
+        bucket = "hour"
+    else:
+        bucket = "day"
+
+    bucket_col = func.date_trunc(bucket, RequestLog.created_at).label("bucket")
+
+    result = await session.execute(
+        select(
+            bucket_col,
+            func.count().label("total"),
+            func.count().filter(RequestLog.status_code < 400).label("success"),
+            func.count().filter(RequestLog.status_code >= 400).label("errors"),
+            func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+        )
+        .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+        .group_by(bucket_col)
+        .order_by(bucket_col)
+    )
+
+    return [
+        {
+            "bucket": row.bucket.isoformat(),
+            "total": row.total,
+            "success": row.success,
+            "errors": row.errors,
+            "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
+        }
+        for row in result.all()
+    ]
+
+
+@router.get("/stats/status-breakdown")
+async def stats_status_breakdown(
+    hours: int = Query(default=24, ge=1, le=720),
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return []
+
+    group_col = case(
+        (RequestLog.status_code < 200, "1xx"),
+        (RequestLog.status_code < 300, "2xx"),
+        (RequestLog.status_code < 400, "3xx"),
+        (RequestLog.status_code < 500, "4xx"),
+        else_="5xx",
+    ).label("status_group")
+
+    result = await session.execute(
+        select(group_col, func.count().label("count"))
+        .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+        .group_by(group_col)
+        .order_by(group_col)
+    )
+
+    return [
+        {"group": row.status_group, "count": row.count}
         for row in result.all()
     ]
 

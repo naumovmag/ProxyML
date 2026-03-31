@@ -38,6 +38,15 @@ async def check_all_services(
     services = [item["service"] for item in items_data]
 
     async def check_one(svc):
+        if not svc.is_active:
+            return HealthReportItem(
+                service_id=str(svc.id),
+                service_name=svc.name,
+                slug=svc.slug,
+                is_active=False,
+                status="unknown",
+                detail="Service is inactive",
+            )
         result = await check_service_health(svc)
         return HealthReportItem(
             service_id=str(svc.id),

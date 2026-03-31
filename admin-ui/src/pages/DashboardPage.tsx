@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchServices, Service } from '@/api/services'
 import { fetchApiKeys, ApiKey } from '@/api/apiKeys'
-import { fetchStatsOverview, fetchStatsByService, fetchRecentLogs, StatsOverview, ServiceStats, RecentLog, LogFilters } from '@/api/stats'
+import { fetchStatsOverview, fetchStatsByService, fetchStatsByKey, fetchRecentLogs, fetchTimeseries, fetchStatusBreakdown, StatsOverview, ServiceStats, KeyStats, RecentLog, LogFilters, TimeseriesPoint, StatusBreakdown } from '@/api/stats'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X, Sparkles, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { RequestsOverTimeChart, LatencyOverTimeChart, StatusCodeDonut, ServiceBarChart, KeyUsageBarChart } from '@/components/charts'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiSummarizeDashboard, aiAnalyzeError } from '@/api/ai'
 
@@ -26,8 +27,11 @@ export default function DashboardPage() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [overview, setOverview] = useState<StatsOverview | null>(null)
   const [byService, setByService] = useState<ServiceStats[]>([])
+  const [byKey, setByKey] = useState<KeyStats[]>([])
   const [recentLogs, setRecentLogs] = useState<RecentLog[]>([])
   const [hours, setHours] = useState(24)
+  const [timeseries, setTimeseries] = useState<TimeseriesPoint[]>([])
+  const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([])
   const [filters, setFilters] = useState<LogFilters>({})
   const [logsLimit, setLogsLimit] = useState(50)
 
@@ -40,6 +44,9 @@ export default function DashboardPage() {
     fetchApiKeys().then((r) => setApiKeys(r.data))
     fetchStatsOverview(hours).then((r) => setOverview(r.data)).catch(() => {})
     fetchStatsByService(hours).then((r) => setByService(r.data)).catch(() => {})
+    fetchStatsByKey(hours).then((r) => setByKey(r.data)).catch(() => {})
+    fetchTimeseries(hours).then((r) => setTimeseries(r.data)).catch(() => {})
+    fetchStatusBreakdown(hours).then((r) => setStatusBreakdown(r.data)).catch(() => {})
     loadLogs()
   }
 
@@ -107,7 +114,6 @@ export default function DashboardPage() {
 
   const activeServices = services.filter((s) => s.is_active).length
   const activeKeys = apiKeys.filter((k) => k.is_active).length
-  const maxRequests = Math.max(...byService.map((s) => s.request_count), 1)
 
   return (
     <div className="space-y-6">
@@ -231,34 +237,54 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Requests by Service */}
-      {byService.length > 0 && (
+      {/* Charts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Requests Over Time</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RequestsOverTimeChart data={timeseries} hours={hours} />
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Latency Over Time</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LatencyOverTimeChart data={timeseries} hours={hours} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Status Codes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StatusCodeDonut data={statusBreakdown} />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Requests by Service & Key Usage */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Requests by Service</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {byService.map((s) => (
-              <div key={s.service_slug} className="space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{s.service_slug}</span>
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <span>{s.request_count} req</span>
-                    {s.error_count > 0 && <span className="text-red-500">{s.error_count} err</span>}
-                    <span>{s.avg_duration_ms}ms avg</span>
-                  </div>
-                </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-foreground/70 transition-all"
-                    style={{ width: `${(s.request_count / maxRequests) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <ServiceBarChart data={byService} />
           </CardContent>
         </Card>
-      )}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Usage by API Key</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <KeyUsageBarChart data={byKey} />
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recent Logs */}
         <Card>

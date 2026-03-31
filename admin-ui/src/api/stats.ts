@@ -70,3 +70,22 @@ export const fetchRecentLogs = (limit = 50, filters?: LogFilters) => {
   if (filters?.api_key_id) params.set('api_key_id', filters.api_key_id)
   return api.get<RecentLog[]>(`/admin/stats/recent?${params}`)
 }
+
+export interface TimeseriesPoint {
+  bucket: string
+  total: number
+  success: number
+  errors: number
+  avg_duration_ms: number
+}
+
+export interface StatusBreakdown {
+  group: string
+  count: number
+}
+
+export const fetchTimeseries = (hours = 24) =>
+  api.get<TimeseriesPoint[]>(`/admin/stats/timeseries?hours=${hours}`)
+
+export const fetchStatusBreakdown = (hours = 24) =>
+  api.get<StatusBreakdown[]>(`/admin/stats/status-breakdown?hours=${hours}`)

@@ -22,6 +22,11 @@
     --input: 0 0% 64%;
     --ring: 0 0% 13%;
     --radius: 0.5rem;
+    --chart-success: 142 71% 45%;
+    --chart-error: 0 84% 60%;
+    --chart-primary: 221 83% 53%;
+    --chart-warning: 38 92% 50%;
+    --chart-muted: 0 0% 55%;
   }
 
   .dark {
@@ -42,6 +47,11 @@
     --border: 0 0% 24%;
     --input: 0 0% 24%;
     --ring: 0 0% 60%;
+    --chart-success: 142 71% 45%;
+    --chart-error: 0 62% 50%;
+    --chart-primary: 217 91% 60%;
+    --chart-warning: 38 92% 50%;
+    --chart-muted: 0 0% 45%;
   }
 }
 
