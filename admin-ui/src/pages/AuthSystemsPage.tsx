@@ -68,6 +68,20 @@ export default function AuthSystemsPage() {
         </Button>
       </div>
 
+      <Card className="mb-6">
+        <CardContent className="py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldCheck className="h-4 w-4" />
+            <span className="font-medium">Security Technologies</span>
+          </div>
+          <div className="text-sm text-muted-foreground space-y-1">
+            <div>Passwords are hashed with bcrypt.</div>
+            <div>Access tokens are JWTs signed per system (HS256).</div>
+            <div>Refresh tokens are random and stored as SHA-256 hashes with TTL.</div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="space-y-3">
         {systems.map(sys => (
           <Card key={sys.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate(`/auth-systems/${sys.id}`)}>
@@ -120,9 +134,10 @@ export default function AuthSystemsPage() {
         open={confirmState.open}
         onOpenChange={open => setConfirmState(s => ({ ...s, open }))}
         title="Delete Auth System"
-        description="This will delete the auth system and ALL its users. This action cannot be undone."
+        description="This auth system may already have registered users. Deleting it will remove the system and all its users permanently."
         confirmLabel="Delete"
         variant="destructive"
+        confirmText="delete"
         onConfirm={confirmState.onConfirm}
       />
 

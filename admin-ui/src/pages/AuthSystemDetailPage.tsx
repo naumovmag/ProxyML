@@ -688,6 +688,9 @@ export default function AuthSystemDetailPage() {
                 <Button variant="outline" size="icon" onClick={() => copyText(baseUrl, 'base')}>
                   {copiedKey === 'base' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                 </Button>
+                <a href={`${baseUrl}/docs`} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm">Swagger UI</Button>
+                </a>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
                 No API key required. Endpoints are public, identified by slug.

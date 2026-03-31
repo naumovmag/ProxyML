@@ -2,7 +2,8 @@ import uuid
 import secrets
 import hashlib
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
+from fastapi.responses import JSONResponse, HTMLResponse
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt, JWTError
@@ -289,3 +290,160 @@ async def auth_verify(
         user_id=payload["sub"],
         email=payload.get("email"),
     )
+
+
+def _build_openapi(system, base_path: str) -> dict:
+    """Build OpenAPI 3.0 spec dynamically from auth system config."""
+    type_map = {"string": "string", "email": "string", "phone": "string", "number": "number", "boolean": "boolean"}
+
+    # Build fields schema for register
+    fields_properties = {}
+    fields_required = []
+    for f in system.registration_fields:
+        fields_properties[f["name"]] = {"type": type_map.get(f["type"], "string")}
+        if f.get("required"):
+            fields_required.append(f["name"])
+
+    register_schema = {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+            "email": {"type": "string", "format": "email"},
+            "password": {"type": "string", "minLength": 6},
+        },
+    }
+    if fields_properties:
+        register_schema["properties"]["fields"] = {
+            "type": "object",
+            "properties": fields_properties,
+            **({"required": fields_required} if fields_required else {}),
+        }
+
+    token_response = {
+        "type": "object",
+        "properties": {
+            "access_token": {"type": "string"},
+            "refresh_token": {"type": "string"},
+            "token_type": {"type": "string", "example": "bearer"},
+            "expires_in": {"type": "integer", "example": system.access_token_ttl_minutes * 60},
+        },
+    }
+
+    user_response = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "format": "uuid"},
+            "email": {"type": "string"},
+            "custom_fields": {"type": "object"},
+            "is_active": {"type": "boolean"},
+            "created_at": {"type": "string", "format": "date-time"},
+        },
+    }
+
+    bearer = {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}
+
+    return {
+        "openapi": "3.0.3",
+        "info": {"title": system.name, "version": "1.0.0", "description": f"Auth system API for **{system.name}**"},
+        "servers": [{"url": base_path}],
+        "components": {
+            "securitySchemes": bearer,
+            "schemas": {
+                "RegisterRequest": register_schema,
+                "LoginRequest": {
+                    "type": "object",
+                    "required": ["email", "password"],
+                    "properties": {
+                        "email": {"type": "string", "format": "email"},
+                        "password": {"type": "string"},
+                    },
+                },
+                "TokenResponse": token_response,
+                "RefreshRequest": {
+                    "type": "object",
+                    "required": ["refresh_token"],
+                    "properties": {"refresh_token": {"type": "string"}},
+                },
+                "UserResponse": user_response,
+                "VerifyResponse": {
+                    "type": "object",
+                    "properties": {
+                        "valid": {"type": "boolean"},
+                        "user_id": {"type": "string"},
+                        "email": {"type": "string"},
+                    },
+                },
+            },
+        },
+        "paths": {
+            "/register": {
+                "post": {
+                    "summary": "Register",
+                    "description": "Register a new user and receive tokens.",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RegisterRequest"}}}},
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TokenResponse"}}}}},
+                },
+            },
+            "/login": {
+                "post": {
+                    "summary": "Login",
+                    "description": "Authenticate by email and password.",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}}},
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TokenResponse"}}}}},
+                },
+            },
+            "/me": {
+                "get": {
+                    "summary": "Get Current User",
+                    "description": "Get authenticated user profile.",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserResponse"}}}}},
+                },
+            },
+            "/refresh": {
+                "post": {
+                    "summary": "Refresh Token",
+                    "description": "Exchange refresh token for new access + refresh tokens.",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshRequest"}}}},
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TokenResponse"}}}}},
+                },
+            },
+            "/verify": {
+                "get": {
+                    "summary": "Verify Token",
+                    "description": "Check if access token is valid.",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyResponse"}}}}},
+                },
+            },
+        },
+    }
+
+
+@router.get("/{slug}/openapi.json", include_in_schema=False)
+async def auth_openapi(
+    slug: str,
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    base_path = str(request.base_url).rstrip("/") + f"/api/auth/{slug}"
+    return JSONResponse(_build_openapi(system, base_path))
+
+
+@router.get("/{slug}/docs", include_in_schema=False)
+async def auth_docs(
+    slug: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    html = f"""<!DOCTYPE html>
+<html><head>
+<title>{system.name} — API Docs</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head><body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>SwaggerUIBundle({{url:"./openapi.json",dom_id:"#swagger-ui",presets:[SwaggerUIBundle.presets.apis,SwaggerUIBundle.SwaggerUIStandalonePreset],layout:"BaseLayout"}})</script>
+</body></html>"""
+    return HTMLResponse(html)
