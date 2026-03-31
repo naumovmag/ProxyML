@@ -427,7 +427,10 @@ async def auth_openapi(
     session: AsyncSession = Depends(get_async_session),
 ):
     system = await _get_system(session, slug)
-    base_path = str(request.base_url).rstrip("/") + f"/api/auth/{slug}"
+    # Respect X-Forwarded-Proto from reverse proxy (nginx ingress terminates TLS)
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.headers.get("host", request.base_url.hostname))
+    base_path = f"{proto}://{host}/api/auth/{slug}"
     return JSONResponse(_build_openapi(system, base_path))
 
 
