@@ -76,7 +76,7 @@ class GenericProxyHandler(AbstractProxyHandler):
         headers = {}
         for key, value in request.headers.items():
             lower = key.lower()
-            if lower in ("host", "x-api-key", "connection", "transfer-encoding"):
+            if lower in ("host", "x-api-key", "authorization", "connection", "transfer-encoding"):
                 continue
             headers[key] = value
 
