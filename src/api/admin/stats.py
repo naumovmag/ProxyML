@@ -101,20 +101,29 @@ async def stats_by_key(
 
     result = await session.execute(
         select(
+            RequestLog.api_key_id,
             RequestLog.api_key_name,
             func.count().label("request_count"),
+            func.count().filter(RequestLog.status_code >= 400).label("error_count"),
+            func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
         )
         .where(
             RequestLog.created_at >= since,
             RequestLog.service_id.in_(svc_ids),
-            RequestLog.api_key_name.isnot(None),
+            RequestLog.api_key_id.isnot(None),
         )
-        .group_by(RequestLog.api_key_name)
+        .group_by(RequestLog.api_key_id, RequestLog.api_key_name)
         .order_by(desc("request_count"))
     )
 
     return [
-        {"api_key_name": row.api_key_name, "request_count": row.request_count}
+        {
+            "api_key_id": str(row.api_key_id),
+            "api_key_name": row.api_key_name,
+            "request_count": row.request_count,
+            "error_count": row.error_count,
+            "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
+        }
         for row in result.all()
     ]
 
@@ -127,6 +136,7 @@ async def stats_recent(
     status: str | None = Query(default=None),
     source: str | None = Query(default=None),
     api_key_name: str | None = Query(default=None),
+    api_key_id: str | None = Query(default=None),
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -153,6 +163,8 @@ async def stats_recent(
         stmt = stmt.where(RequestLog.is_cached == False)
     if api_key_name:
         stmt = stmt.where(RequestLog.api_key_name == api_key_name)
+    if api_key_id:
+        stmt = stmt.where(RequestLog.api_key_id == uuid.UUID(api_key_id))
 
     result = await session.execute(stmt)
     logs = result.scalars().all()

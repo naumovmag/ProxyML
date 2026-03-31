@@ -17,8 +17,11 @@ export interface ServiceStats {
 }
 
 export interface KeyStats {
+  api_key_id: string
   api_key_name: string
   request_count: number
+  error_count: number
+  avg_duration_ms: number
 }
 
 export interface RecentLog {
@@ -54,6 +57,7 @@ export interface LogFilters {
   status?: string
   source?: string
   api_key_name?: string
+  api_key_id?: string
 }
 
 export const fetchRecentLogs = (limit = 50, filters?: LogFilters) => {
@@ -63,5 +67,6 @@ export const fetchRecentLogs = (limit = 50, filters?: LogFilters) => {
   if (filters?.status) params.set('status', filters.status)
   if (filters?.source) params.set('source', filters.source)
   if (filters?.api_key_name) params.set('api_key_name', filters.api_key_name)
+  if (filters?.api_key_id) params.set('api_key_id', filters.api_key_id)
   return api.get<RecentLog[]>(`/admin/stats/recent?${params}`)
 }

@@ -211,8 +211,13 @@ export default function ServicesPage() {
     setDialogOpen(true)
   }
 
+  const slugFormatOk = !form.slug || /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(form.slug)
+  const slugDuplicate = form.slug && services.some((s) => s.slug === form.slug && s.id !== editId)
+  const slugValid = slugFormatOk && !slugDuplicate
+
   const handleSubmit = async (e: React.FormEvent, andCheck = false) => {
     e.preventDefault()
+    if (!slugValid) { toast.error('Invalid slug format'); return }
     const data = { ...form, tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean) }
     try {
       if (editId) {
@@ -726,7 +731,19 @@ export default function ServicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Slug</Label>
-                <Input value={form.slug} onChange={(e) => setField('slug', e.target.value)} required placeholder="my-service" />
+                <Input
+                  value={form.slug}
+                  onChange={(e) => setField('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  required
+                  placeholder="my-service"
+                  pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+                />
+                {form.slug && !slugFormatOk && (
+                  <p className="text-xs text-destructive">Only lowercase letters, digits and hyphens. Must start and end with a letter or digit (min 2 chars)</p>
+                )}
+                {slugDuplicate && (
+                  <p className="text-xs text-destructive">This slug is already taken</p>
+                )}
               </div>
             </div>
 
@@ -954,10 +971,10 @@ export default function ServicesPage() {
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="button" variant="secondary" onClick={(e) => handleSubmit(e as any, true)}>
+              <Button type="button" variant="secondary" disabled={!slugValid} onClick={(e) => handleSubmit(e as any, true)}>
                 {editId ? 'Save & Check' : 'Create & Check'}
               </Button>
-              <Button type="submit">{editId ? 'Update' : 'Create'}</Button>
+              <Button type="submit" disabled={!slugValid}>{editId ? 'Update' : 'Create'}</Button>
             </div>
           </form>
         </DialogContent>

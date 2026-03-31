@@ -4,6 +4,7 @@ import {
   ApiKey, ApiKeyCreate, ApiKeyUpdate,
 } from '@/api/apiKeys'
 import { fetchServices, Service } from '@/api/services'
+import { fetchStatsByKey, fetchRecentLogs, KeyStats, RecentLog } from '@/api/stats'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Copy, Check, Pencil, Shield, ShieldCheck, ShieldX } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Pencil, Shield, ShieldCheck, ShieldX, BarChart3, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function ApiKeysPage() {
@@ -23,6 +24,10 @@ export default function ApiKeysPage() {
   const [newKey, setNewKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
+  const [keyStatsMap, setKeyStatsMap] = useState<Record<string, KeyStats>>({})
+  const [statsModalKey, setStatsModalKey] = useState<ApiKey | null>(null)
+  const [modalLogs, setModalLogs] = useState<RecentLog[]>([])
+  const [modalLoading, setModalLoading] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -31,9 +36,16 @@ export default function ApiKeysPage() {
   const [formRateLimit, setFormRateLimit] = useState('')
 
   const load = async () => {
-    const [keysRes, servicesRes] = await Promise.all([fetchApiKeys(), fetchServices()])
+    const [keysRes, servicesRes, statsRes] = await Promise.all([
+      fetchApiKeys(), fetchServices(), fetchStatsByKey(720),
+    ])
     setKeys(keysRes.data)
     setServices(servicesRes.data)
+    const map: Record<string, KeyStats> = {}
+    for (const s of statsRes.data) {
+      if (s.api_key_id) map[s.api_key_id] = s
+    }
+    setKeyStatsMap(map)
   }
   useEffect(() => { load() }, [])
 
@@ -133,6 +145,20 @@ export default function ApiKeysPage() {
     load()
   }
 
+  const openStatsModal = async (key: ApiKey) => {
+    setStatsModalKey(key)
+    setModalLoading(true)
+    setModalLogs([])
+    try {
+      const { data } = await fetchRecentLogs(100, { api_key_id: key.id })
+      setModalLogs(data)
+    } catch {
+      setModalLogs([])
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
   const getServiceName = (slug: string) => {
     const svc = services.find((s) => s.slug === slug)
     return svc ? svc.name : slug
@@ -170,6 +196,14 @@ export default function ApiKeysPage() {
                     {k.rate_limit_rpm && (
                       <Badge variant="outline">{k.rate_limit_rpm} rpm</Badge>
                     )}
+                    <Badge
+                      variant="outline"
+                      className="gap-1 cursor-pointer hover:bg-muted"
+                      onClick={(e) => { e.stopPropagation(); openStatsModal(k) }}
+                    >
+                      <BarChart3 className="h-3 w-3" />
+                      {(keyStatsMap[k.id]?.request_count ?? 0).toLocaleString()} req
+                    </Badge>
                   </div>
                   <div className="text-sm text-muted-foreground">
                     <span className="font-mono">{k.key_prefix}...</span>
@@ -313,6 +347,82 @@ export default function ApiKeysPage() {
                 </Button>
               </div>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Stats Modal */}
+      <Dialog open={!!statsModalKey} onOpenChange={(open) => { if (!open) setStatsModalKey(null) }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Usage: {statsModalKey?.name}</DialogTitle>
+          </DialogHeader>
+          {statsModalKey && (
+            <div className="space-y-4">
+              <div className="flex gap-6 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Requests: </span>
+                  <span className="font-medium">{(keyStatsMap[statsModalKey.id]?.request_count ?? 0).toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Errors: </span>
+                  <span className="font-medium text-destructive">{keyStatsMap[statsModalKey.id]?.error_count ?? 0}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Avg Duration: </span>
+                  <span className="font-medium">{keyStatsMap[statsModalKey.id]?.avg_duration_ms ?? 0} ms</span>
+                </div>
+              </div>
+
+              {modalLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="pb-2 pr-4">Time</th>
+                        <th className="pb-2 pr-4">Service</th>
+                        <th className="pb-2 pr-4">Method</th>
+                        <th className="pb-2 pr-4">Path</th>
+                        <th className="pb-2 pr-4">Status</th>
+                        <th className="pb-2 pr-4 text-right">Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modalLogs.map((log) => (
+                        <tr key={log.id} className="border-b border-border/50">
+                          <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
+                            {new Date(log.created_at).toLocaleString()}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <Badge variant="outline" className="text-xs">{log.service_slug}</Badge>
+                          </td>
+                          <td className="py-2 pr-4">
+                            <Badge variant="secondary" className="text-xs">{log.method}</Badge>
+                          </td>
+                          <td className="py-2 pr-4 font-mono text-xs max-w-[200px] truncate">{log.path}</td>
+                          <td className="py-2 pr-4">
+                            <Badge variant={log.status_code < 400 ? 'success' : 'destructive'} className="text-xs">
+                              {log.status_code}
+                            </Badge>
+                          </td>
+                          <td className="py-2 pr-4 text-right whitespace-nowrap">{log.duration_ms} ms</td>
+                        </tr>
+                      ))}
+                      {modalLogs.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                            No requests found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>
