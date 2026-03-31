@@ -44,8 +44,10 @@ async def get_api_key_or_fail(
     if not raw_key and authorization:
         if authorization.lower().startswith("bearer "):
             raw_key = authorization[7:].strip()
+        else:
+            raw_key = authorization.strip()
     if not raw_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required (X-Api-Key header or Authorization: Bearer <key>)")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required (X-Api-Key or Authorization header)")
     api_key = await validate_api_key(session, raw_key)
     if api_key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired API key")
