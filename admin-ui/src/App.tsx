@@ -11,6 +11,8 @@ import PlaygroundPage from './pages/PlaygroundPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
 import LoadTestsPage from './pages/LoadTestsPage'
+import AuthSystemsPage from './pages/AuthSystemsPage'
+import AuthSystemDetailPage from './pages/AuthSystemDetailPage'
 import Layout from './components/layout/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -43,6 +45,8 @@ export default function App() {
                   <Route path="/api-keys" element={<ApiKeysPage />} />
                   <Route path="/health" element={<HealthPage />} />
                   <Route path="/playground" element={<PlaygroundPage />} />
+                  <Route path="/auth-systems" element={<AuthSystemsPage />} />
+                  <Route path="/auth-systems/:id" element={<AuthSystemDetailPage />} />
                   <Route path="/load-tests" element={<SuperadminRoute><LoadTestsPage /></SuperadminRoute>} />
                   <Route path="/users" element={<SuperadminRoute><UsersPage /></SuperadminRoute>} />
                   <Route path="/settings" element={<SuperadminRoute><SettingsPage /></SuperadminRoute>} />

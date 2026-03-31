@@ -12,6 +12,7 @@ from src.proxy.client import close_http_client
 from src.cache.redis_client import close_redis
 from src.api.v1.router import router as v1_router
 from src.api.v1.proxy import router as proxy_router
+from src.api.v1.auth_public import router as auth_public_router
 from src.api.admin.router import router as admin_router
 from src.middleware.logging import LoggingMiddleware
 
@@ -29,6 +30,9 @@ async def lifespan(app: FastAPI):
         from src.models.service_group import ServiceGroup
         from src.models.api_key import ApiKey
         from src.models.request_log import RequestLog
+        from src.models.auth_system import AuthSystem
+        from src.models.auth_user import AuthUser
+        from src.models.auth_refresh_token import AuthRefreshToken
         from src.utils.crypto import hash_password
         from sqlalchemy import select, update
 
@@ -97,6 +101,7 @@ app.add_middleware(LoggingMiddleware)
 # Routers
 app.include_router(v1_router)
 app.include_router(proxy_router, prefix="/proxy", tags=["proxy"])
+app.include_router(auth_public_router, prefix="/api/auth", tags=["auth-public"])
 app.include_router(admin_router)
 
 # Serve frontend static files if built

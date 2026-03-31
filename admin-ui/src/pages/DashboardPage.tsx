@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchServices, Service } from '@/api/services'
 import { fetchApiKeys, ApiKey } from '@/api/apiKeys'
+import { fetchAuthSystems, AuthSystem } from '@/api/authSystems'
 import { fetchStatsOverview, fetchStatsByService, fetchStatsByKey, fetchRecentLogs, fetchTimeseries, fetchStatusBreakdown, StatsOverview, ServiceStats, KeyStats, RecentLog, LogFilters, TimeseriesPoint, StatusBreakdown } from '@/api/stats'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X, Sparkles, Loader2 } from 'lucide-react'
+import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X, Sparkles, Loader2, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { RequestsOverTimeChart, LatencyOverTimeChart, StatusCodeDonut, ServiceBarChart, KeyUsageBarChart } from '@/components/charts'
 import { fetchSettings, SystemSettings } from '@/api/settings'
@@ -25,6 +26,7 @@ function formatBytes(bytes: number): string {
 export default function DashboardPage() {
   const [services, setServices] = useState<Service[]>([])
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const [authSystems, setAuthSystems] = useState<AuthSystem[]>([])
   const [overview, setOverview] = useState<StatsOverview | null>(null)
   const [byService, setByService] = useState<ServiceStats[]>([])
   const [byKey, setByKey] = useState<KeyStats[]>([])
@@ -42,6 +44,7 @@ export default function DashboardPage() {
   const load = () => {
     fetchServices().then((r) => setServices(r.data))
     fetchApiKeys().then((r) => setApiKeys(r.data))
+    fetchAuthSystems().then((r) => setAuthSystems(r.data)).catch(() => {})
     fetchStatsOverview(hours).then((r) => setOverview(r.data)).catch(() => {})
     fetchStatsByService(hours).then((r) => setByService(r.data)).catch(() => {})
     fetchStatsByKey(hours).then((r) => setByKey(r.data)).catch(() => {})
@@ -186,7 +189,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Infrastructure */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Services</CardTitle>
@@ -212,6 +215,15 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{services.filter((s) => s.supports_streaming).length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Auth Systems</CardTitle>
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{authSystems.filter((s) => s.is_active).length}<span className="text-sm text-muted-foreground font-normal"> / {authSystems.length}</span></div>
           </CardContent>
         </Card>
       </div>
