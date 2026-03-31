@@ -191,7 +191,7 @@ export default function AuthSystemDetailPage() {
 
   if (!system) return null
 
-  const baseUrl = `${window.location.protocol}//${window.location.hostname}:8000/api/auth/${system.slug}`
+  const baseUrl = `${window.location.origin}/api/auth/${system.slug}`
 
   const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
     { key: 'settings', label: 'Settings', icon: Settings },
