@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  getAuthSystem, updateAuthSystem, fetchAuthSystemUsers, toggleAuthUser, fetchAuthSystemStats,
+  getAuthSystem, updateAuthSystem, fetchAuthSystemUsers, toggleAuthUser, updateAuthUser, resetAuthUserPassword, fetchAuthSystemStats,
   AuthSystem, AuthSystemUpdate, RegistrationField, AuthSystemUser, AuthSystemStatsResponse,
 } from '@/api/authSystems'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
-import { ArrowLeft, Plus, Trash2, Save, Copy, Check, Users, Settings, Code, Layers, BarChart3, FlaskConical, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, Copy, Check, Users, Settings, Code, Layers, BarChart3, FlaskConical, Loader2, Send, Pencil, KeyRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { RegistrationsChart } from '@/components/charts'
 import axios from 'axios'
@@ -43,17 +44,28 @@ export default function AuthSystemDetailPage() {
   const [users, setUsers] = useState<AuthSystemUser[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
 
+  // Edit user modal
+  const [editUser, setEditUser] = useState<AuthSystemUser | null>(null)
+  const [editEmail, setEditEmail] = useState('')
+  const [editFields, setEditFields] = useState<Record<string, any>>({})
+
+  // Reset password modal
+  const [resetPwUser, setResetPwUser] = useState<AuthSystemUser | null>(null)
+  const [resetPwValue, setResetPwValue] = useState('')
+
   // Stats
   const [stats, setStats] = useState<AuthSystemStatsResponse | null>(null)
   const [statsHours, setStatsHours] = useState(720)
 
   // Playground
-  const [pgAction, setPgAction] = useState<'register' | 'login' | 'me' | 'refresh' | 'verify'>('register')
+  const [pgAction, setPgAction] = useState<'register' | 'login' | 'me' | 'update-profile' | 'change-password' | 'refresh' | 'logout' | 'verify'>('register')
   const [pgEmail, setPgEmail] = useState('')
   const [pgPassword, setPgPassword] = useState('')
   const [pgFields, setPgFields] = useState<Record<string, any>>({})
   const [pgAccessToken, setPgAccessToken] = useState('')
   const [pgRefreshToken, setPgRefreshToken] = useState('')
+  const [pgOldPassword, setPgOldPassword] = useState('')
+  const [pgNewPassword, setPgNewPassword] = useState('')
   const [pgResult, setPgResult] = useState<string | null>(null)
   const [pgLoading, setPgLoading] = useState(false)
   const [pgStatus, setPgStatus] = useState<number | null>(null)
@@ -111,7 +123,6 @@ export default function AuthSystemDetailPage() {
     try {
       const { data } = await updateAuthSystem(id, {
         name: formName,
-        slug: formSlug,
         access_token_ttl_minutes: formAccessTTL,
         refresh_token_ttl_days: formRefreshTTL,
         is_active: formActive,
@@ -156,6 +167,36 @@ export default function AuthSystemDetailPage() {
     setTimeout(() => setCopiedKey(null), 2000)
   }
 
+  const openEditUser = (u: AuthSystemUser) => {
+    setEditUser(u)
+    setEditEmail(u.email)
+    setEditFields({ ...u.custom_fields })
+  }
+
+  const handleSaveUser = async () => {
+    if (!editUser || !id) return
+    try {
+      const { data } = await updateAuthUser(id, editUser.id, { email: editEmail, custom_fields: editFields })
+      setUsers(users.map(u => u.id === editUser.id ? data : u))
+      setEditUser(null)
+      toast.success('User updated')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error')
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!resetPwUser || !id || resetPwValue.length < 6) return
+    try {
+      await resetAuthUserPassword(id, resetPwUser.id, resetPwValue)
+      setResetPwUser(null)
+      setResetPwValue('')
+      toast.success('Password reset')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error')
+    }
+  }
+
   const executePg = async () => {
     if (!system) return
     setPgLoading(true)
@@ -172,6 +213,12 @@ export default function AuthSystemDetailPage() {
         res = await axios.get(`${base}/me`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
       } else if (pgAction === 'refresh') {
         res = await axios.post(`${base}/refresh`, { refresh_token: pgRefreshToken })
+      } else if (pgAction === 'update-profile') {
+        res = await axios.patch(`${base}/me`, { fields: pgFields }, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'change-password') {
+        res = await axios.post(`${base}/change-password`, { old_password: pgOldPassword, new_password: pgNewPassword }, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'logout') {
+        res = await axios.post(`${base}/logout`, { refresh_token: pgRefreshToken })
       } else if (pgAction === 'verify') {
         res = await axios.get(`${base}/verify`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
       }
@@ -255,6 +302,30 @@ export default function AuthSystemDetailPage() {
       curl: `curl ${baseUrl}/verify \\\n  -H "Authorization: Bearer ACCESS_TOKEN"`,
       response: '{\n  "valid": true,\n  "user_id": "uuid",\n  "email": "user@example.com"\n}',
     },
+    {
+      title: 'Update Profile',
+      method: 'PATCH',
+      path: '/me',
+      description: 'Update custom fields of the authenticated user.',
+      curl: `curl -X PATCH ${baseUrl}/me \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ACCESS_TOKEN" \\\n  -d '{"fields": {...}}'`,
+      response: '{\n  "id": "uuid",\n  "email": "user@example.com",\n  "custom_fields": {...},\n  "is_active": true,\n  "created_at": "..."\n}',
+    },
+    {
+      title: 'Change Password',
+      method: 'POST',
+      path: '/change-password',
+      description: 'Change password for the authenticated user.',
+      curl: `curl -X POST ${baseUrl}/change-password \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ACCESS_TOKEN" \\\n  -d '{"old_password": "current", "new_password": "newpass123"}'`,
+      response: '{\n  "ok": true\n}',
+    },
+    {
+      title: 'Logout',
+      method: 'POST',
+      path: '/logout',
+      description: 'Invalidate refresh token. Use on user logout.',
+      curl: `curl -X POST ${baseUrl}/logout \\\n  -H "Content-Type: application/json" \\\n  -d '{"refresh_token": "abc..."}'`,
+      response: '{\n  "ok": true\n}',
+    },
   ]
 
   return (
@@ -302,10 +373,8 @@ export default function AuthSystemDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label>Slug</Label>
-                <Input
-                  value={formSlug}
-                  onChange={e => setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                />
+                <Input value={system?.slug || ''} disabled className="font-mono" />
+                <p className="text-xs text-muted-foreground">Slug cannot be changed after creation</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -471,17 +540,26 @@ export default function AuthSystemDetailPage() {
                       ))}
                       <td className="py-2 pr-4 text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
                       <td className="py-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            await toggleAuthUser(id!, u.id)
-                            setUsers(users.map(x => x.id === u.id ? { ...x, is_active: !x.is_active } : x))
-                            toast.success(u.is_active ? 'User deactivated' : 'User activated')
-                          }}
-                        >
-                          {u.is_active ? 'Deactivate' : 'Activate'}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => openEditUser(u)} title="Edit">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { setResetPwUser(u); setResetPwValue('') }} title="Reset password">
+                            <KeyRound className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            onClick={async () => {
+                              await toggleAuthUser(id!, u.id)
+                              setUsers(users.map(x => x.id === u.id ? { ...x, is_active: !x.is_active } : x))
+                              toast.success(u.is_active ? 'User deactivated' : 'User activated')
+                            }}
+                          >
+                            {u.is_active ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -581,7 +659,10 @@ export default function AuthSystemDetailPage() {
                     <SelectItem value="register">POST /register</SelectItem>
                     <SelectItem value="login">POST /login</SelectItem>
                     <SelectItem value="me">GET /me</SelectItem>
+                    <SelectItem value="update-profile">PATCH /me</SelectItem>
+                    <SelectItem value="change-password">POST /change-password</SelectItem>
                     <SelectItem value="refresh">POST /refresh</SelectItem>
+                    <SelectItem value="logout">POST /logout</SelectItem>
                     <SelectItem value="verify">GET /verify</SelectItem>
                   </SelectContent>
                 </Select>
@@ -624,14 +705,48 @@ export default function AuthSystemDetailPage() {
                 </div>
               )}
 
-              {(pgAction === 'me' || pgAction === 'verify') && (
+              {(pgAction === 'me' || pgAction === 'verify' || pgAction === 'update-profile' || pgAction === 'change-password') && (
                 <div className="space-y-2">
                   <Label>Access Token</Label>
                   <Input value={pgAccessToken} onChange={e => setPgAccessToken(e.target.value)} placeholder="eyJ..." className="font-mono text-xs" />
                 </div>
               )}
 
-              {pgAction === 'refresh' && (
+              {pgAction === 'update-profile' && system.registration_fields.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Fields to Update</Label>
+                  {system.registration_fields.map(f => (
+                    <div key={f.name} className="flex items-center gap-2">
+                      <span className="text-sm w-28 shrink-0">{f.name}</span>
+                      {f.type === 'boolean' ? (
+                        <Checkbox checked={!!pgFields[f.name]} onCheckedChange={v => setPgFields({ ...pgFields, [f.name]: !!v })} />
+                      ) : (
+                        <Input
+                          value={pgFields[f.name] ?? ''}
+                          onChange={e => setPgFields({ ...pgFields, [f.name]: f.type === 'number' ? Number(e.target.value) : e.target.value })}
+                          type={f.type === 'number' ? 'number' : 'text'}
+                          placeholder={f.type}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pgAction === 'change-password' && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Old Password</Label>
+                    <Input type="password" value={pgOldPassword} onChange={e => setPgOldPassword(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>New Password</Label>
+                    <Input type="password" value={pgNewPassword} onChange={e => setPgNewPassword(e.target.value)} placeholder="Min 6 characters" />
+                  </div>
+                </>
+              )}
+
+              {(pgAction === 'refresh' || pgAction === 'logout') && (
                 <div className="space-y-2">
                   <Label>Refresh Token</Label>
                   <Input value={pgRefreshToken} onChange={e => setPgRefreshToken(e.target.value)} placeholder="token..." className="font-mono text-xs" />
@@ -728,6 +843,69 @@ export default function AuthSystemDetailPage() {
           ))}
         </div>
       )}
+      {/* Edit User Modal */}
+      <Dialog open={!!editUser} onOpenChange={open => { if (!open) setEditUser(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+          </DialogHeader>
+          {editUser && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input value={editEmail} onChange={e => setEditEmail(e.target.value)} />
+              </div>
+              {system.registration_fields.map(f => (
+                <div key={f.name} className="space-y-2">
+                  <Label>{f.name}</Label>
+                  {f.type === 'boolean' ? (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={!!editFields[f.name]}
+                        onCheckedChange={v => setEditFields({ ...editFields, [f.name]: !!v })}
+                      />
+                    </div>
+                  ) : (
+                    <Input
+                      value={editFields[f.name] ?? ''}
+                      onChange={e => setEditFields({ ...editFields, [f.name]: f.type === 'number' ? Number(e.target.value) : e.target.value })}
+                      type={f.type === 'number' ? 'number' : 'text'}
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditUser(null)}>Cancel</Button>
+                <Button onClick={handleSaveUser}>Save</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Modal */}
+      <Dialog open={!!resetPwUser} onOpenChange={open => { if (!open) setResetPwUser(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+          </DialogHeader>
+          {resetPwUser && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Set new password for <span className="font-medium text-foreground">{resetPwUser.email}</span>
+              </p>
+              <div className="space-y-2">
+                <Label>New Password</Label>
+                <Input type="password" value={resetPwValue} onChange={e => setResetPwValue(e.target.value)} placeholder="Min 6 characters" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setResetPwUser(null)}>Cancel</Button>
+                <Button onClick={handleResetPassword} disabled={resetPwValue.length < 6}>Reset Password</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

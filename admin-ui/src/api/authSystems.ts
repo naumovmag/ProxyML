@@ -31,7 +31,6 @@ export interface AuthSystemCreate {
 
 export interface AuthSystemUpdate {
   name?: string
-  slug?: string
   access_token_ttl_minutes?: number
   refresh_token_ttl_days?: number
   registration_fields?: RegistrationField[]
@@ -54,6 +53,10 @@ export const updateAuthSystem = (id: string, data: AuthSystemUpdate) => api.put<
 export const deleteAuthSystem = (id: string) => api.delete(`/admin/auth-systems/${id}`)
 export const fetchAuthSystemUsers = (id: string) => api.get<AuthSystemUser[]>(`/admin/auth-systems/${id}/users`)
 export const toggleAuthUser = (systemId: string, userId: string) => api.patch(`/admin/auth-systems/${systemId}/users/${userId}/toggle`)
+export const updateAuthUser = (systemId: string, userId: string, data: { email?: string; custom_fields?: Record<string, any>; is_active?: boolean }) =>
+  api.put<AuthSystemUser>(`/admin/auth-systems/${systemId}/users/${userId}`, data)
+export const resetAuthUserPassword = (systemId: string, userId: string, newPassword: string) =>
+  api.post(`/admin/auth-systems/${systemId}/users/${userId}/reset-password`, { new_password: newPassword })
 
 export interface AuthSystemStatsResponse {
   total_users: number

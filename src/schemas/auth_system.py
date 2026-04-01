@@ -34,7 +34,6 @@ class AuthSystemCreate(BaseModel):
 
 class AuthSystemUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
-    slug: str | None = Field(default=None, max_length=255, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     access_token_ttl_minutes: int | None = Field(default=None, ge=1, le=525600)
     refresh_token_ttl_days: int | None = Field(default=None, ge=1, le=365)
     registration_fields: list[RegistrationField] | None = None
@@ -91,7 +90,30 @@ class AuthUserRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AuthUpdateProfileRequest(BaseModel):
+    fields: dict = {}
+
+
+class AuthChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., max_length=255)
+    new_password: str = Field(..., min_length=6, max_length=255)
+
+
+class AuthLogoutRequest(BaseModel):
+    refresh_token: str
+
+
 class AuthVerifyResponse(BaseModel):
     valid: bool
     user_id: str | None = None
     email: str | None = None
+
+
+class AdminUpdateAuthUser(BaseModel):
+    email: str | None = Field(default=None, max_length=255)
+    custom_fields: dict | None = None
+    is_active: bool | None = None
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=6, max_length=255)

@@ -15,6 +15,7 @@ from src.models.auth_refresh_token import AuthRefreshToken
 from src.schemas.auth_system import (
     AuthRegisterRequest, AuthLoginRequest, AuthTokenResponse,
     AuthRefreshRequest, AuthUserRead, AuthVerifyResponse,
+    AuthUpdateProfileRequest, AuthChangePasswordRequest, AuthLogoutRequest,
 )
 from src.utils.crypto import hash_password, verify_password
 
@@ -268,6 +269,75 @@ async def auth_refresh(
     )
 
 
+@router.patch("/{slug}/me", response_model=AuthUserRead)
+async def auth_update_profile(
+    slug: str,
+    data: AuthUpdateProfileRequest,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    custom_fields = _validate_custom_fields(system, data.fields)
+    user.custom_fields = {**user.custom_fields, **custom_fields}
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+@router.post("/{slug}/change-password")
+async def auth_change_password(
+    slug: str,
+    data: AuthChangePasswordRequest,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    if not await verify_password(data.old_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Old password is incorrect")
+
+    user.password_hash = await hash_password(data.new_password)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.post("/{slug}/logout")
+async def auth_logout(
+    slug: str,
+    data: AuthLogoutRequest,
+    session: AsyncSession = Depends(get_async_session),
+):
+    await _get_system(session, slug)
+    token_hash = _hash_token(data.refresh_token)
+    result = await session.execute(
+        select(AuthRefreshToken).where(AuthRefreshToken.token_hash == token_hash)
+    )
+    rt = result.scalar_one_or_none()
+    if rt:
+        await session.delete(rt)
+        await session.commit()
+    return {"ok": True}
+
+
 @router.get("/{slug}/verify", response_model=AuthVerifyResponse)
 async def auth_verify(
     slug: str,
@@ -365,6 +435,10 @@ def _build_openapi(system, base_path: str) -> dict:
                     "properties": {"refresh_token": {"type": "string"}},
                 },
                 "UserResponse": user_response,
+                "UpdateProfileRequest": {
+                    "type": "object",
+                    "properties": {"fields": {"type": "object", "properties": fields_properties}},
+                },
                 "VerifyResponse": {
                     "type": "object",
                     "properties": {
@@ -392,14 +466,6 @@ def _build_openapi(system, base_path: str) -> dict:
                     "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TokenResponse"}}}}},
                 },
             },
-            "/me": {
-                "get": {
-                    "summary": "Get Current User",
-                    "description": "Get authenticated user profile.",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserResponse"}}}}},
-                },
-            },
             "/refresh": {
                 "post": {
                     "summary": "Refresh Token",
@@ -414,6 +480,44 @@ def _build_openapi(system, base_path: str) -> dict:
                     "description": "Check if access token is valid.",
                     "security": [{"bearerAuth": []}],
                     "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyResponse"}}}}},
+                },
+            },
+            "/me": {
+                "get": {
+                    "summary": "Get Current User",
+                    "description": "Get authenticated user profile.",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserResponse"}}}}},
+                },
+                "patch": {
+                    "summary": "Update Profile",
+                    "description": "Update custom fields of the authenticated user.",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateProfileRequest"}}}},
+                    "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserResponse"}}}}},
+                },
+            },
+            "/change-password": {
+                "post": {
+                    "summary": "Change Password",
+                    "description": "Change password for the authenticated user.",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["old_password", "new_password"],
+                        "properties": {"old_password": {"type": "string"}, "new_password": {"type": "string", "minLength": 6}},
+                    }}}},
+                    "responses": {"200": {"description": "Success"}},
+                },
+            },
+            "/logout": {
+                "post": {
+                    "summary": "Logout",
+                    "description": "Invalidate refresh token.",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                        "type": "object", "required": ["refresh_token"],
+                        "properties": {"refresh_token": {"type": "string"}},
+                    }}}},
+                    "responses": {"200": {"description": "Success"}},
                 },
             },
         },

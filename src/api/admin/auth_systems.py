@@ -9,7 +9,8 @@ from src.api.deps import get_current_admin
 from src.models.admin_user import AdminUser
 from src.models.auth_system import AuthSystem
 from src.models.auth_user import AuthUser
-from src.schemas.auth_system import AuthSystemCreate, AuthSystemUpdate, AuthSystemRead
+from src.schemas.auth_system import AuthSystemCreate, AuthSystemUpdate, AuthSystemRead, AdminUpdateAuthUser, AdminResetPasswordRequest
+from src.utils.crypto import hash_password
 
 router = APIRouter()
 
@@ -83,14 +84,7 @@ async def update_auth_system(
     if not system:
         raise HTTPException(status_code=404, detail="Auth system not found")
 
-    if data.slug is not None and data.slug != system.slug:
-        existing = await session.execute(
-            select(AuthSystem.id).where(AuthSystem.slug == data.slug, AuthSystem.id != system_id)
-        )
-        if existing.scalar_one_or_none():
-            raise HTTPException(status_code=409, detail="Slug already exists")
-
-    for field in ("name", "slug", "access_token_ttl_minutes", "refresh_token_ttl_days", "users_active_by_default", "is_active"):
+    for field in ("name", "access_token_ttl_minutes", "refresh_token_ttl_days", "users_active_by_default", "is_active"):
         val = getattr(data, field)
         if val is not None:
             setattr(system, field, val)
@@ -172,6 +166,68 @@ async def toggle_auth_user(
     user.is_active = not user.is_active
     await session.commit()
     return {"id": str(user.id), "is_active": user.is_active}
+
+
+@router.put("/auth-systems/{system_id}/users/{user_id}")
+async def update_auth_user(
+    system_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: AdminUpdateAuthUser,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    result = await session.execute(
+        select(AuthSystem).where(AuthSystem.id == system_id, AuthSystem.owner_id == admin.id)
+    )
+    system = result.scalar_one_or_none()
+    if not system:
+        raise HTTPException(status_code=404, detail="Auth system not found")
+
+    user_result = await session.execute(
+        select(AuthUser).where(AuthUser.id == user_id, AuthUser.auth_system_id == system_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if data.email is not None:
+        user.email = data.email.lower().strip()
+    if data.custom_fields is not None:
+        user.custom_fields = data.custom_fields
+    if data.is_active is not None:
+        user.is_active = data.is_active
+    await session.commit()
+    return {
+        "id": str(user.id), "email": user.email,
+        "custom_fields": user.custom_fields, "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+    }
+
+
+@router.post("/auth-systems/{system_id}/users/{user_id}/reset-password")
+async def reset_auth_user_password(
+    system_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: AdminResetPasswordRequest,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    result = await session.execute(
+        select(AuthSystem.id).where(AuthSystem.id == system_id, AuthSystem.owner_id == admin.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Auth system not found")
+
+    user_result = await session.execute(
+        select(AuthUser).where(AuthUser.id == user_id, AuthUser.auth_system_id == system_id)
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = await hash_password(data.new_password)
+    await session.commit()
+    return {"ok": True}
 
 
 @router.get("/auth-systems/{system_id}/stats")
