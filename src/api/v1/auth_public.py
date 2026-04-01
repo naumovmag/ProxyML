@@ -3,7 +3,7 @@ import secrets
 import hashlib
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt, JWTError
@@ -18,6 +18,7 @@ from src.schemas.auth_system import (
     AuthUpdateProfileRequest, AuthChangePasswordRequest, AuthLogoutRequest,
 )
 from src.utils.crypto import hash_password, verify_password
+from src.services.email.verification import send_verification_email, verify_email_token, check_rate_limit
 
 router = APIRouter()
 
@@ -149,6 +150,9 @@ async def auth_register(
     session.add(rt)
     await session.commit()
 
+    if system.email_verification_enabled:
+        send_verification_email(system, user)
+
     return AuthTokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -176,6 +180,8 @@ async def auth_login(
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User is inactive")
+    if system.require_email_verification and not user.email_verified:
+        raise HTTPException(status_code=403, detail="Email not verified. Please check your inbox.")
 
     access_token = _create_access_token(system, user)
     refresh_token = _create_refresh_token()
@@ -338,6 +344,51 @@ async def auth_logout(
     return {"ok": True}
 
 
+@router.get("/{slug}/verify-email", include_in_schema=False)
+async def auth_verify_email(
+    slug: str,
+    token: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    user = await verify_email_token(session, token)
+    if not user:
+        return HTMLResponse("<h2>Invalid or expired verification link</h2>", status_code=400)
+    if system.verification_redirect_url:
+        sep = "&" if "?" in system.verification_redirect_url else "?"
+        return RedirectResponse(f"{system.verification_redirect_url}{sep}verified=true")
+    return HTMLResponse("<div style='font-family:sans-serif;text-align:center;padding:60px'><h2>Email verified successfully!</h2><p>You can close this page.</p></div>")
+
+
+@router.post("/{slug}/resend-verification")
+async def auth_resend_verification(
+    slug: str,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    if not system.email_verification_enabled:
+        raise HTTPException(status_code=400, detail="Email verification is not enabled")
+
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    if user.email_verified:
+        return {"ok": True, "message": "Already verified"}
+
+    if not await check_rate_limit(session, user.id):
+        raise HTTPException(status_code=429, detail="Too many verification emails. Please wait.")
+
+    send_verification_email(system, user)
+    return {"ok": True, "message": "Verification email sent"}
+
+
 @router.get("/{slug}/verify", response_model=AuthVerifyResponse)
 async def auth_verify(
     slug: str,
@@ -355,10 +406,14 @@ async def auth_verify(
     if not payload:
         return AuthVerifyResponse(valid=False)
 
+    user_result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = user_result.scalar_one_or_none()
+
     return AuthVerifyResponse(
         valid=True,
         user_id=payload["sub"],
         email=payload.get("email"),
+        email_verified=user.email_verified if user else None,
     )
 
 

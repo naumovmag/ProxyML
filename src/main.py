@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
         from src.models.auth_system import AuthSystem
         from src.models.auth_user import AuthUser
         from src.models.auth_refresh_token import AuthRefreshToken
+        from src.models.email_verification_token import EmailVerificationToken
         from src.utils.crypto import hash_password
         from sqlalchemy import select, update
 

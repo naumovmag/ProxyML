@@ -15,6 +15,16 @@ export interface AuthSystem {
   refresh_token_ttl_days: number
   registration_fields: RegistrationField[]
   users_active_by_default: boolean
+  email_verification_enabled: boolean
+  require_email_verification: boolean
+  email_provider_type: string | null
+  email_provider_config: Record<string, any> | null
+  email_from_address: string | null
+  email_from_name: string | null
+  verification_token_ttl_minutes: number
+  verification_redirect_url: string | null
+  email_template_subject: string | null
+  email_template_body: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -42,8 +52,18 @@ export interface AuthSystemUser {
   id: string
   email: string
   custom_fields: Record<string, any>
+  email_verified: boolean
   is_active: boolean
   created_at: string
+}
+
+export interface ProviderField {
+  name: string
+  type: string
+  required: boolean
+  label: string
+  placeholder: string
+  secret: boolean
 }
 
 export const fetchAuthSystems = () => api.get<AuthSystem[]>('/admin/auth-systems')
@@ -68,3 +88,9 @@ export interface AuthSystemStatsResponse {
 
 export const fetchAuthSystemStats = (id: string, hours = 720) =>
   api.get<AuthSystemStatsResponse>(`/admin/auth-systems/${id}/stats?hours=${hours}`)
+
+export const fetchEmailProviders = () =>
+  api.get<{ providers: Record<string, ProviderField[]> }>('/admin/email-providers')
+
+export const sendTestEmail = (systemId: string, to: string) =>
+  api.post(`/admin/auth-systems/${systemId}/test-email`, { to })

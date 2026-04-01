@@ -17,6 +17,16 @@ class AuthSystemCreate(BaseModel):
     refresh_token_ttl_days: int = Field(default=30, ge=1, le=365)
     registration_fields: list[RegistrationField] = []
     users_active_by_default: bool = True
+    email_verification_enabled: bool = False
+    require_email_verification: bool = False
+    email_provider_type: str | None = None
+    email_provider_config: dict | None = None
+    email_from_address: str | None = None
+    email_from_name: str | None = None
+    verification_token_ttl_minutes: int = Field(default=1440, ge=5, le=10080)
+    verification_redirect_url: str | None = None
+    email_template_subject: str | None = None
+    email_template_body: str | None = None
 
     @field_validator("registration_fields")
     @classmethod
@@ -38,6 +48,16 @@ class AuthSystemUpdate(BaseModel):
     refresh_token_ttl_days: int | None = Field(default=None, ge=1, le=365)
     registration_fields: list[RegistrationField] | None = None
     users_active_by_default: bool | None = None
+    email_verification_enabled: bool | None = None
+    require_email_verification: bool | None = None
+    email_provider_type: str | None = None
+    email_provider_config: dict | None = None
+    email_from_address: str | None = None
+    email_from_name: str | None = None
+    verification_token_ttl_minutes: int | None = Field(default=None, ge=5, le=10080)
+    verification_redirect_url: str | None = None
+    email_template_subject: str | None = None
+    email_template_body: str | None = None
     is_active: bool | None = None
 
 
@@ -49,6 +69,16 @@ class AuthSystemRead(BaseModel):
     refresh_token_ttl_days: int
     registration_fields: list[RegistrationField]
     users_active_by_default: bool
+    email_verification_enabled: bool
+    require_email_verification: bool
+    email_provider_type: str | None
+    email_provider_config: dict | None
+    email_from_address: str | None
+    email_from_name: str | None
+    verification_token_ttl_minutes: int
+    verification_redirect_url: str | None
+    email_template_subject: str | None
+    email_template_body: str | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -84,6 +114,7 @@ class AuthUserRead(BaseModel):
     id: uuid.UUID
     email: str
     custom_fields: dict
+    email_verified: bool
     is_active: bool
     created_at: datetime
 
@@ -107,6 +138,7 @@ class AuthVerifyResponse(BaseModel):
     valid: bool
     user_id: str | None = None
     email: str | None = None
+    email_verified: bool | None = None
 
 
 class AdminUpdateAuthUser(BaseModel):

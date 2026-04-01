@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   getAuthSystem, updateAuthSystem, fetchAuthSystemUsers, toggleAuthUser, updateAuthUser, resetAuthUserPassword, fetchAuthSystemStats,
-  AuthSystem, AuthSystemUpdate, RegistrationField, AuthSystemUser, AuthSystemStatsResponse,
+  fetchEmailProviders, sendTestEmail,
+  AuthSystem, AuthSystemUpdate, RegistrationField, AuthSystemUser, AuthSystemStatsResponse, ProviderField,
 } from '@/api/authSystems'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,14 +14,16 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
-import { ArrowLeft, Plus, Trash2, Save, Copy, Check, Users, Settings, Code, Layers, BarChart3, FlaskConical, Loader2, Send, Pencil, KeyRound } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, Copy, Check, Users, Settings, Code, Layers, BarChart3, FlaskConical, Loader2, Send, Pencil, KeyRound, Mail, CheckCircle, XCircle, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { RegistrationsChart } from '@/components/charts'
+import { fetchSettings, SystemSettings } from '@/api/settings'
+import { aiGenerateEmailTemplate } from '@/api/ai'
 import axios from 'axios'
 
 const FIELD_TYPES = ['string', 'number', 'boolean', 'email', 'phone'] as const
 
-type Tab = 'settings' | 'fields' | 'users' | 'stats' | 'playground' | 'api'
+type Tab = 'settings' | 'email' | 'fields' | 'users' | 'stats' | 'playground' | 'api'
 
 export default function AuthSystemDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -43,6 +46,27 @@ export default function AuthSystemDetailPage() {
   // Users
   const [users, setUsers] = useState<AuthSystemUser[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
+
+  // AI
+  const [aiSettings, setAiSettings] = useState<SystemSettings | null>(null)
+  const [aiGenerating, setAiGenerating] = useState(false)
+
+  // Email tab
+  const [emailPreview, setEmailPreview] = useState(false)
+  const [emailProviders, setEmailProviders] = useState<Record<string, ProviderField[]>>({})
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [testEmailTo, setTestEmailTo] = useState('')
+  const [testEmailSending, setTestEmailSending] = useState(false)
+  const [formEmailEnabled, setFormEmailEnabled] = useState(false)
+  const [formRequireVerification, setFormRequireVerification] = useState(false)
+  const [formProviderType, setFormProviderType] = useState<string>('')
+  const [formProviderConfig, setFormProviderConfig] = useState<Record<string, any>>({})
+  const [formFromAddress, setFormFromAddress] = useState('')
+  const [formFromName, setFormFromName] = useState('')
+  const [formTokenTTL, setFormTokenTTL] = useState(1440)
+  const [formRedirectUrl, setFormRedirectUrl] = useState('')
+  const [formTemplateSubject, setFormTemplateSubject] = useState('')
+  const [formTemplateBody, setFormTemplateBody] = useState('')
 
   // Edit user modal
   const [editUser, setEditUser] = useState<AuthSystemUser | null>(null)
@@ -85,6 +109,16 @@ export default function AuthSystemDetailPage() {
       setFormActive(data.is_active)
       setFormUsersActiveByDefault(data.users_active_by_default)
       setFormFields(data.registration_fields.map(f => ({ ...f })))
+      setFormEmailEnabled(data.email_verification_enabled)
+      setFormRequireVerification(data.require_email_verification)
+      setFormProviderType(data.email_provider_type || '')
+      setFormProviderConfig(data.email_provider_config || {})
+      setFormFromAddress(data.email_from_address || '')
+      setFormFromName(data.email_from_name || '')
+      setFormTokenTTL(data.verification_token_ttl_minutes)
+      setFormRedirectUrl(data.verification_redirect_url || '')
+      setFormTemplateSubject(data.email_template_subject || '')
+      setFormTemplateBody(data.email_template_body || '')
     } catch {
       toast.error('Auth system not found')
       navigate('/auth-systems')
@@ -92,6 +126,7 @@ export default function AuthSystemDetailPage() {
   }
 
   useEffect(() => { load() }, [id])
+  useEffect(() => { fetchSettings().then(r => setAiSettings(r.data)).catch(() => {}) }, [])
 
   const loadUsers = async () => {
     if (!id || usersLoaded) return
@@ -115,6 +150,9 @@ export default function AuthSystemDetailPage() {
   useEffect(() => {
     if (tab === 'users') loadUsers()
     if (tab === 'stats') loadStats()
+    if (tab === 'email' && Object.keys(emailProviders).length === 0) {
+      fetchEmailProviders().then(r => setEmailProviders(r.data.providers)).catch(() => {})
+    }
   }, [tab, statsHours])
 
   const handleSaveSettings = async () => {
@@ -165,6 +203,64 @@ export default function AuthSystemDetailPage() {
     navigator.clipboard.writeText(text)
     setCopiedKey(key)
     setTimeout(() => setCopiedKey(null), 2000)
+  }
+
+  const handleAiGenerateTemplate = async () => {
+    if (!system) return
+    setAiGenerating(true)
+    try {
+      const { data } = await aiGenerateEmailTemplate({
+        name: system.name,
+        registration_fields: system.registration_fields.map(f => f.name),
+        language: 'Russian',
+        brand_color: '#2563eb',
+      })
+      if (data.subject) setFormTemplateSubject(data.subject)
+      if (data.body) setFormTemplateBody(data.body)
+      toast.success('Template generated')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'AI generation failed')
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
+  const handleSaveEmail = async () => {
+    if (!id) return
+    setEmailSaving(true)
+    try {
+      const { data } = await updateAuthSystem(id, {
+        email_verification_enabled: formEmailEnabled,
+        require_email_verification: formRequireVerification,
+        email_provider_type: formProviderType || null,
+        email_provider_config: Object.keys(formProviderConfig).length > 0 ? formProviderConfig : null,
+        email_from_address: formFromAddress || null,
+        email_from_name: formFromName || null,
+        verification_token_ttl_minutes: formTokenTTL,
+        verification_redirect_url: formRedirectUrl || null,
+        email_template_subject: formTemplateSubject || null,
+        email_template_body: formTemplateBody || null,
+      } as any)
+      setSystem(data)
+      toast.success('Email settings saved')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error saving')
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  const handleTestEmail = async () => {
+    if (!id || !testEmailTo) return
+    setTestEmailSending(true)
+    try {
+      await sendTestEmail(id, testEmailTo)
+      toast.success(`Test email sent to ${testEmailTo}`)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to send test email')
+    } finally {
+      setTestEmailSending(false)
+    }
   }
 
   const openEditUser = (u: AuthSystemUser) => {
@@ -242,6 +338,7 @@ export default function AuthSystemDetailPage() {
 
   const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
     { key: 'settings', label: 'Settings', icon: Settings },
+    { key: 'email', label: 'Email', icon: Mail },
     { key: 'fields', label: 'Fields', icon: Layers },
     { key: 'users', label: 'Users', icon: Users },
     { key: 'stats', label: 'Stats', icon: BarChart3 },
@@ -406,6 +503,172 @@ export default function AuthSystemDetailPage() {
         </Card>
       )}
 
+      {/* Email Tab */}
+      {tab === 'email' && (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center space-x-2">
+                  <Switch checked={formEmailEnabled} onCheckedChange={setFormEmailEnabled} id="email-enabled" />
+                  <Label htmlFor="email-enabled">Email verification enabled</Label>
+                </div>
+                {formEmailEnabled && (
+                  <div className="flex items-center space-x-2">
+                    <Switch checked={formRequireVerification} onCheckedChange={setFormRequireVerification} id="require-verify" />
+                    <Label htmlFor="require-verify">Require for login</Label>
+                  </div>
+                )}
+              </div>
+
+              {formEmailEnabled && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Provider</Label>
+                      <Select value={formProviderType} onValueChange={v => { setFormProviderType(v); setFormProviderConfig({}) }}>
+                        <SelectTrigger><SelectValue placeholder="Select provider" /></SelectTrigger>
+                        <SelectContent>
+                          {Object.keys(emailProviders).map(p => (
+                            <SelectItem key={p} value={p}>{p.toUpperCase()}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Verification Token TTL (minutes)</Label>
+                      <Input type="number" min={5} value={formTokenTTL} onChange={e => setFormTokenTTL(parseInt(e.target.value) || 1440)} />
+                    </div>
+                  </div>
+
+                  {formProviderType && emailProviders[formProviderType] && (
+                    <div className="space-y-3 p-4 border rounded-md">
+                      <p className="text-sm font-medium">Provider Config: {formProviderType.toUpperCase()}</p>
+                      {emailProviders[formProviderType].map(field => (
+                        <div key={field.name} className="grid grid-cols-3 gap-2 items-center">
+                          <Label>{field.label}</Label>
+                          {field.type === 'boolean' ? (
+                            <div className="col-span-2 flex items-center space-x-2">
+                              <Checkbox
+                                checked={!!formProviderConfig[field.name]}
+                                onCheckedChange={v => setFormProviderConfig({ ...formProviderConfig, [field.name]: !!v })}
+                              />
+                            </div>
+                          ) : (
+                            <Input
+                              className="col-span-2"
+                              type={field.secret ? 'password' : field.type === 'number' ? 'number' : 'text'}
+                              value={formProviderConfig[field.name] ?? ''}
+                              onChange={e => setFormProviderConfig({
+                                ...formProviderConfig,
+                                [field.name]: field.type === 'number' ? Number(e.target.value) : e.target.value,
+                              })}
+                              placeholder={field.placeholder}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>From Address</Label>
+                      <Input value={formFromAddress} onChange={e => setFormFromAddress(e.target.value)} placeholder="noreply@example.com" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>From Name</Label>
+                      <Input value={formFromName} onChange={e => setFormFromName(e.target.value)} placeholder="My App" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Redirect URL after verification</Label>
+                    <Input value={formRedirectUrl} onChange={e => setFormRedirectUrl(e.target.value)} placeholder="https://myapp.com/verified" />
+                    <p className="text-xs text-muted-foreground">Leave empty to show a default "Email verified" page</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Email Subject</Label>
+                    <Input value={formTemplateSubject} onChange={e => setFormTemplateSubject(e.target.value)} placeholder="Verify your email for {{system_name}}" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Email Body (HTML)</Label>
+                      <div className="flex items-center gap-2">
+                        {aiSettings?.ai_enabled && (
+                          <Button variant="outline" size="sm" onClick={handleAiGenerateTemplate} disabled={aiGenerating}>
+                            {aiGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                            Generate with AI
+                          </Button>
+                        )}
+                        <div className="flex border rounded-md overflow-hidden text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setEmailPreview(false)}
+                            className={`px-3 py-1 ${!emailPreview ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                          >Code</button>
+                          <button
+                            type="button"
+                            onClick={() => setEmailPreview(true)}
+                            className={`px-3 py-1 ${emailPreview ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                          >Preview</button>
+                        </div>
+                      </div>
+                    </div>
+                    {!emailPreview ? (
+                      <>
+                        <textarea
+                          className="w-full min-h-[250px] rounded-md border bg-background px-3 py-2 text-sm font-mono"
+                          value={formTemplateBody}
+                          onChange={e => setFormTemplateBody(e.target.value)}
+                          placeholder="Leave empty for default template"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Placeholders: {'{{verification_link}}'}, {'{{user_email}}'}, {'{{system_name}}'}, {'{{ttl_hours}}'}
+                        </p>
+                      </>
+                    ) : (
+                      <div className="border rounded-md bg-white min-h-[250px] p-1">
+                        <iframe
+                          srcDoc={
+                            (formTemplateBody || '<p style="color:#999;text-align:center;padding:40px">No template — using default</p>')
+                              .replace(/\{\{verification_link\}\}/g, '#')
+                              .replace(/\{\{user_email\}\}/g, 'user@example.com')
+                              .replace(/\{\{system_name\}\}/g, system?.name || 'My App')
+                              .replace(/\{\{ttl_hours\}\}/g, String(Math.round(formTokenTTL / 60)))
+                          }
+                          className="w-full min-h-[250px] border-0"
+                          sandbox=""
+                          title="Email preview"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                {formEmailEnabled && formProviderType && (
+                  <div className="flex items-center gap-2">
+                    <Input value={testEmailTo} onChange={e => setTestEmailTo(e.target.value)} placeholder="test@example.com" className="w-56" />
+                    <Button variant="outline" size="sm" onClick={handleTestEmail} disabled={testEmailSending || !testEmailTo}>
+                      {testEmailSending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                      Send Test
+                    </Button>
+                  </div>
+                )}
+                <div className="ml-auto">
+                  <Button onClick={handleSaveEmail} disabled={emailSaving}>
+                    <Save className="h-4 w-4 mr-2" />{emailSaving ? 'Saving...' : 'Save Email Settings'}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Fields Tab */}
       {tab === 'fields' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -527,7 +790,13 @@ export default function AuthSystemDetailPage() {
                 <tbody>
                   {users.map(u => (
                     <tr key={u.id} className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-medium">{u.email}</td>
+                      <td className="py-2 pr-4 font-medium flex items-center gap-1">
+                        {u.email}
+                        {u.email_verified
+                          ? <span title="Email verified"><CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" /></span>
+                          : <span title="Not verified"><XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" /></span>
+                        }
+                      </td>
                       <td className="py-2 pr-4">
                         <Badge variant={u.is_active ? 'success' : 'secondary'} className="text-xs">
                           {u.is_active ? 'Active' : 'Inactive'}

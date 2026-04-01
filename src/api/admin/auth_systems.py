@@ -11,6 +11,8 @@ from src.models.auth_system import AuthSystem
 from src.models.auth_user import AuthUser
 from src.schemas.auth_system import AuthSystemCreate, AuthSystemUpdate, AuthSystemRead, AdminUpdateAuthUser, AdminResetPasswordRequest
 from src.utils.crypto import hash_password
+from src.services.email.registry import get_all_provider_schemas, get_email_provider
+from src.services.email.base import EmailMessage, EmailSendError, EmailConfigError
 
 router = APIRouter()
 
@@ -84,8 +86,15 @@ async def update_auth_system(
     if not system:
         raise HTTPException(status_code=404, detail="Auth system not found")
 
-    for field in ("name", "access_token_ttl_minutes", "refresh_token_ttl_days", "users_active_by_default", "is_active"):
-        val = getattr(data, field)
+    simple_fields = (
+        "name", "access_token_ttl_minutes", "refresh_token_ttl_days", "users_active_by_default",
+        "email_verification_enabled", "require_email_verification", "email_provider_type",
+        "email_provider_config", "email_from_address", "email_from_name",
+        "verification_token_ttl_minutes", "verification_redirect_url",
+        "email_template_subject", "email_template_body", "is_active",
+    )
+    for field in simple_fields:
+        val = getattr(data, field, None)
         if val is not None:
             setattr(system, field, val)
 
@@ -136,6 +145,7 @@ async def list_auth_system_users(
             "id": str(u.id),
             "email": u.email,
             "custom_fields": u.custom_fields,
+            "email_verified": u.email_verified,
             "is_active": u.is_active,
             "created_at": u.created_at.isoformat(),
         }
@@ -228,6 +238,49 @@ async def reset_auth_user_password(
     user.password_hash = await hash_password(data.new_password)
     await session.commit()
     return {"ok": True}
+
+
+@router.get("/email-providers")
+async def list_email_providers(
+    admin: AdminUser = Depends(get_current_admin),
+):
+    return {"providers": get_all_provider_schemas()}
+
+
+@router.post("/auth-systems/{system_id}/test-email")
+async def test_email(
+    system_id: uuid.UUID,
+    data: dict,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    result = await session.execute(
+        select(AuthSystem).where(AuthSystem.id == system_id, AuthSystem.owner_id == admin.id)
+    )
+    system = result.scalar_one_or_none()
+    if not system:
+        raise HTTPException(status_code=404, detail="Auth system not found")
+    if not system.email_provider_type or not system.email_provider_config:
+        raise HTTPException(status_code=400, detail="Email provider not configured")
+
+    to = data.get("to")
+    if not to:
+        raise HTTPException(status_code=422, detail="'to' email address required")
+
+    try:
+        provider = get_email_provider(system.email_provider_type, system.email_provider_config)
+        await provider.send(EmailMessage(
+            to=to,
+            subject=f"Test email from {system.name}",
+            body_html=f"<p>This is a test email from <strong>{system.name}</strong> auth system on ProxyML.</p><p>If you received this, your email provider is configured correctly.</p>",
+            from_address=system.email_from_address or "noreply@proxyml.local",
+            from_name=system.email_from_name,
+        ))
+        return {"ok": True, "message": f"Test email sent to {to}"}
+    except (EmailSendError, EmailConfigError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/auth-systems/{system_id}/stats")

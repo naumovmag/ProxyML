@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
     cache_ttl_seconds: int = 86400  # 24h
+    server_base_url: str | None = None  # e.g. https://proxy-ml.example.com
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.db_username}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_database}"

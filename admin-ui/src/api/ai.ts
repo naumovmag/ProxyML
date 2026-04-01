@@ -55,3 +55,10 @@ export const aiGenerateTestParams = (data: {
   default_model?: string | null
   supports_streaming?: boolean
 }) => api.post<{ path: string; body: Record<string, unknown>; description: string }>('/admin/ai/generate-test-params', data)
+
+export const aiGenerateEmailTemplate = (data: {
+  name: string
+  registration_fields: string[]
+  language?: string
+  brand_color?: string
+}) => api.post<{ subject: string; body: string }>('/admin/ai/generate-email-template', data)

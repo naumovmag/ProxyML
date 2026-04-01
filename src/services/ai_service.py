@@ -224,3 +224,34 @@ Return ONLY JSON, no markdown, no explanation."""},
     ]
     result = await call_llm(session, messages, temperature=0.8, max_tokens=1000)
     return _extract_json(result)
+
+
+async def ai_generate_email_template(session: AsyncSession, system_info: dict) -> dict:
+    """Generate email verification template (subject + HTML body)."""
+    fields_desc = ", ".join(system_info.get("registration_fields", [])) or "no custom fields"
+    messages = [
+        {"role": "system", "content": """You are an email template designer. Generate an email verification template.
+Return ONLY a valid JSON object with:
+- subject: string, email subject line (use {{system_name}} placeholder)
+- body: string, full HTML email body
+
+The HTML body must:
+- Be a complete, styled HTML email (inline CSS, max-width 600px, centered)
+- Use a clean, modern design with the provided brand color
+- Include a prominent "Verify Email" button linking to {{verification_link}}
+- Show the plain link below the button: {{verification_link}}
+- Include expiration notice using {{ttl_hours}} hours placeholder
+- Include a note "If you did not register, ignore this email"
+- Use {{system_name}} for the service name
+- Use {{user_email}} where appropriate
+
+Available placeholders: {{verification_link}}, {{user_email}}, {{system_name}}, {{ttl_hours}}
+Return ONLY JSON, no markdown, no explanation."""},
+        {"role": "user", "content": f"""Auth system:
+- Name: {system_info.get('name')}
+- Custom registration fields: {fields_desc}
+- Language: {system_info.get('language', 'English')}
+- Brand color: {system_info.get('brand_color', '#2563eb')}"""},
+    ]
+    result = await call_llm(session, messages, temperature=0.7, max_tokens=2000)
+    return _extract_json(result)
