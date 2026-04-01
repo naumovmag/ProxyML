@@ -6,7 +6,11 @@ from src.db.base import Base
 from src.db.session import get_async_session
 from src.config import settings
 
-from src.models import Service, ApiKey, AdminUser, RequestLog
+from src.models import Service, ApiKey, AdminUser, RequestLog, VerificationChannel, VerificationCode
+from src.models.auth_system import AuthSystem
+from src.models.auth_user import AuthUser
+from src.models.auth_refresh_token import AuthRefreshToken
+from src.models.email_verification_token import EmailVerificationToken
 
 TEST_DATABASE_URL = settings.database_url
 

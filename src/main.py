@@ -13,6 +13,7 @@ from src.cache.redis_client import close_redis
 from src.api.v1.router import router as v1_router
 from src.api.v1.proxy import router as proxy_router
 from src.api.v1.auth_public import router as auth_public_router
+from src.api.v1.telegram_webhook import router as telegram_webhook_router
 from src.api.admin.router import router as admin_router
 from src.middleware.logging import LoggingMiddleware
 
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI):
         from src.models.auth_user import AuthUser
         from src.models.auth_refresh_token import AuthRefreshToken
         from src.models.email_verification_token import EmailVerificationToken
+        from src.models.verification_channel import VerificationChannel
+        from src.models.verification_code import VerificationCode
         from src.utils.crypto import hash_password
         from sqlalchemy import select, update
 
@@ -103,6 +106,7 @@ app.add_middleware(LoggingMiddleware)
 app.include_router(v1_router)
 app.include_router(proxy_router, prefix="/proxy", tags=["proxy"])
 app.include_router(auth_public_router, prefix="/api/auth", tags=["auth-public"])
+app.include_router(telegram_webhook_router, prefix="/api", tags=["telegram-webhook"])
 app.include_router(admin_router)
 
 # Serve frontend static files if built

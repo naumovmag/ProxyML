@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from src.api.admin import auth, services, service_groups, api_keys, check, stats, users, settings, ai, playground, load_tests, auth_systems
+from src.api.admin import auth, services, service_groups, api_keys, check, stats, users, settings, ai, playground, load_tests, auth_systems, verification_channels
 
 router = APIRouter(prefix="/api/admin")
 router.include_router(auth.router, tags=["admin-auth"])
@@ -14,3 +14,4 @@ router.include_router(ai.router, tags=["admin-ai"])
 router.include_router(playground.router, tags=["admin-playground"])
 router.include_router(load_tests.router, tags=["admin-load-tests"])
 router.include_router(auth_systems.router, tags=["admin-auth-systems"])
+router.include_router(verification_channels.router, tags=["admin-verification-channels"])

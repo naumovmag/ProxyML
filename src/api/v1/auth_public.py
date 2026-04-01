@@ -19,6 +19,10 @@ from src.schemas.auth_system import (
 )
 from src.utils.crypto import hash_password, verify_password
 from src.services.email.verification import send_verification_email, verify_email_token, check_rate_limit
+from src.models.verification_channel import VerificationChannel
+from src.schemas.verification_channel import VerifyCodeRequest, ResendCodeRequest, TelegramLinkResponse
+from src.services.verification.service import send_all_verifications, verify_code as verify_channel_code, check_all_verified, check_rate_limit as channel_rate_limit, send_verification
+from src.services.verification.telegram.linking import generate_linking_code, build_deep_link
 
 router = APIRouter()
 
@@ -150,7 +154,20 @@ async def auth_register(
     session.add(rt)
     await session.commit()
 
-    if system.email_verification_enabled:
+    # Check if verification_channels are configured
+    ch_result = await session.execute(
+        select(VerificationChannel.id).where(
+            VerificationChannel.auth_system_id == system.id,
+            VerificationChannel.is_enabled == True,
+        )
+    )
+    has_channels = ch_result.scalar_one_or_none() is not None
+
+    if has_channels:
+        # Use new multi-channel verification
+        await send_all_verifications(session, system.id, user, system.name, system.slug)
+    elif system.email_verification_enabled:
+        # Backward compat: use legacy email verification
         send_verification_email(system, user)
 
     return AuthTokenResponse(
@@ -180,7 +197,20 @@ async def auth_login(
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User is inactive")
-    if system.require_email_verification and not user.email_verified:
+    # Check verification: new channels or legacy
+    has_required_channels_result = await session.execute(
+        select(VerificationChannel.id).where(
+            VerificationChannel.auth_system_id == system.id,
+            VerificationChannel.is_enabled == True,
+            VerificationChannel.is_required == True,
+        )
+    )
+    if has_required_channels_result.scalar_one_or_none() is not None:
+        # New system: check all required channels
+        if not await check_all_verified(session, system.id, user):
+            raise HTTPException(status_code=403, detail="Verification required. Please complete all required verifications.")
+    elif system.require_email_verification and not user.email_verified:
+        # Legacy: check email only
         raise HTTPException(status_code=403, detail="Email not verified. Please check your inbox.")
 
     access_token = _create_access_token(system, user)
@@ -389,6 +419,158 @@ async def auth_resend_verification(
     return {"ok": True, "message": "Verification email sent"}
 
 
+@router.post("/{slug}/verify-code")
+async def auth_verify_code(
+    slug: str,
+    data: VerifyCodeRequest,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Find channel
+    ch_result = await session.execute(
+        select(VerificationChannel).where(
+            VerificationChannel.auth_system_id == system.id,
+            VerificationChannel.channel_type == data.channel_type,
+            VerificationChannel.is_enabled == True,
+        )
+    )
+    channel = ch_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=400, detail=f"No active {data.channel_type} verification channel")
+
+    user = await verify_channel_code(session, channel.id, data.code)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+
+    return {"ok": True, "channel_type": data.channel_type, "verified": True}
+
+
+@router.get("/{slug}/verification-status")
+async def auth_verification_status(
+    slug: str,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    channels_result = await session.execute(
+        select(VerificationChannel).where(
+            VerificationChannel.auth_system_id == system.id,
+            VerificationChannel.is_enabled == True,
+        ).order_by(VerificationChannel.priority)
+    )
+    channels = channels_result.scalars().all()
+
+    result = []
+    for ch in channels:
+        entry = {
+            "type": ch.channel_type,
+            "required": ch.is_required,
+            "verified": False,
+        }
+        if ch.channel_type == "email":
+            entry["verified"] = user.email_verified
+        elif ch.channel_type == "sms":
+            entry["verified"] = user.phone_verified
+        elif ch.channel_type == "telegram":
+            entry["verified"] = user.telegram_verified
+            if not user.telegram_chat_id:
+                bot_username = ch.settings.get("bot_username", "")
+                if bot_username:
+                    entry["needs_linking"] = True
+        result.append(entry)
+
+    return {"channels": result}
+
+
+@router.post("/{slug}/resend-code")
+async def auth_resend_code(
+    slug: str,
+    data: ResendCodeRequest,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    ch_result = await session.execute(
+        select(VerificationChannel).where(
+            VerificationChannel.auth_system_id == system.id,
+            VerificationChannel.channel_type == data.channel_type,
+            VerificationChannel.is_enabled == True,
+        )
+    )
+    channel = ch_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=400, detail=f"No active {data.channel_type} verification channel")
+
+    if not await channel_rate_limit(session, user.id, channel.id):
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait.")
+
+    send_verification(channel, user, system.name, system.slug)
+    return {"ok": True, "message": f"Verification code sent via {data.channel_type}"}
+
+
+@router.post("/{slug}/telegram-link", response_model=TelegramLinkResponse)
+async def auth_telegram_link(
+    slug: str,
+    authorization: str = Header(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    system = await _get_system(session, slug)
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    payload = _decode_access_token(system, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    ch_result = await session.execute(
+        select(VerificationChannel).where(
+            VerificationChannel.auth_system_id == system.id,
+            VerificationChannel.channel_type == "telegram",
+            VerificationChannel.is_enabled == True,
+        )
+    )
+    channel = ch_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=400, detail="No active Telegram verification channel")
+
+    bot_username = channel.settings.get("bot_username", "")
+    if not bot_username:
+        raise HTTPException(status_code=400, detail="Telegram bot username not configured")
+
+    code = await generate_linking_code(session, user.id, channel.id)
+    deep_link = build_deep_link(bot_username, code)
+    return TelegramLinkResponse(deep_link=deep_link, expires_in=600)
+
+
 @router.get("/{slug}/verify", response_model=AuthVerifyResponse)
 async def auth_verify(
     slug: str,
@@ -414,6 +596,8 @@ async def auth_verify(
         user_id=payload["sub"],
         email=payload.get("email"),
         email_verified=user.email_verified if user else None,
+        phone_verified=user.phone_verified if user else None,
+        telegram_verified=user.telegram_verified if user else None,
     )
 
 

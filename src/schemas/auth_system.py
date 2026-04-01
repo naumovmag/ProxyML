@@ -91,6 +91,7 @@ class AuthSystemRead(BaseModel):
 class AuthRegisterRequest(BaseModel):
     email: str = Field(..., max_length=255)
     password: str = Field(..., min_length=6, max_length=255)
+    phone: str | None = Field(default=None, max_length=50)
     fields: dict = {}
 
 
@@ -113,8 +114,11 @@ class AuthRefreshRequest(BaseModel):
 class AuthUserRead(BaseModel):
     id: uuid.UUID
     email: str
+    phone: str | None = None
     custom_fields: dict
     email_verified: bool
+    phone_verified: bool = False
+    telegram_verified: bool = False
     is_active: bool
     created_at: datetime
 
@@ -139,6 +143,8 @@ class AuthVerifyResponse(BaseModel):
     user_id: str | None = None
     email: str | None = None
     email_verified: bool | None = None
+    phone_verified: bool | None = None
+    telegram_verified: bool | None = None
 
 
 class AdminUpdateAuthUser(BaseModel):

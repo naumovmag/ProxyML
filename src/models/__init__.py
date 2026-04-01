@@ -6,5 +6,7 @@ from src.models.admin_user import AdminUser
 from src.models.request_log import RequestLog
 from src.models.playground import PlaygroundPreset, PlaygroundHistory
 from src.models.load_test import LoadTestTask, LoadTestResult
+from src.models.verification_channel import VerificationChannel
+from src.models.verification_code import VerificationCode
 
-__all__ = ["ServiceGroup", "Service", "ServiceShare", "ApiKey", "AdminUser", "RequestLog", "PlaygroundPreset", "PlaygroundHistory", "LoadTestTask", "LoadTestResult"]
+__all__ = ["ServiceGroup", "Service", "ServiceShare", "ApiKey", "AdminUser", "RequestLog", "PlaygroundPreset", "PlaygroundHistory", "LoadTestTask", "LoadTestResult", "VerificationChannel", "VerificationCode"]
