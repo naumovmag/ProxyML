@@ -1,14 +1,15 @@
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_api_key_or_fail
-from src.services.service_registry import get_service_by_slug, get_service_by_id
-from src.proxy.base import registry
-from src.proxy.handler import GenericProxyHandler  # ensure default is registered
+from src.db.session import get_async_session
 from src.models.api_key import ApiKey
 from src.models.service_share import ServiceShare
+from src.proxy.base import registry
+from src.services.service_registry import get_service_by_id, get_service_by_slug
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

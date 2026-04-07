@@ -1,21 +1,22 @@
 import logging
-import os
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from src.config import settings
-from src.utils.logging import setup_logging
-from src.proxy.client import close_http_client
-from src.cache.redis_client import close_redis
-from src.api.v1.router import router as v1_router
-from src.api.v1.proxy import router as proxy_router
-from src.api.v1.auth_public import router as auth_public_router
-from src.api.v1.telegram_webhook import router as telegram_webhook_router
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 from src.api.admin.router import router as admin_router
+from src.api.v1.auth_public import router as auth_public_router
+from src.api.v1.proxy import router as proxy_router
+from src.api.v1.router import router as v1_router
+from src.api.v1.telegram_webhook import router as telegram_webhook_router
+from src.cache.redis_client import close_redis
+from src.config import settings
 from src.middleware.logging import LoggingMiddleware
+from src.proxy.client import close_http_client
+from src.utils.logging import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -25,20 +26,15 @@ async def lifespan(app: FastAPI):
     logger.info("Starting ProxyML...")
     # Seed admin
     try:
+        from sqlalchemy import select, update
+
         from src.db.engine import async_session_factory
         from src.models.admin_user import AdminUser
-        from src.models.service import Service
-        from src.models.service_group import ServiceGroup
         from src.models.api_key import ApiKey
         from src.models.request_log import RequestLog
-        from src.models.auth_system import AuthSystem
-        from src.models.auth_user import AuthUser
-        from src.models.auth_refresh_token import AuthRefreshToken
-        from src.models.email_verification_token import EmailVerificationToken
-        from src.models.verification_channel import VerificationChannel
-        from src.models.verification_code import VerificationCode
+        from src.models.service import Service
+        from src.models.service_group import ServiceGroup
         from src.utils.crypto import hash_password
-        from sqlalchemy import select, update
 
         async with async_session_factory() as session:
             result = await session.execute(select(AdminUser).where(AdminUser.username == settings.admin_username))

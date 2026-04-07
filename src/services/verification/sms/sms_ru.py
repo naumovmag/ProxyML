@@ -1,6 +1,13 @@
 import logging
+
 import httpx
-from src.services.verification.base import BaseVerificationProvider, VerificationMessage, VerificationSendError, VerificationConfigError
+
+from src.services.verification.base import (
+    BaseVerificationProvider,
+    VerificationConfigError,
+    VerificationMessage,
+    VerificationSendError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +48,13 @@ class SmsRuProvider(BaseVerificationProvider):
                 resp = await client.get("https://sms.ru/sms/send", params=params, timeout=30.0)
                 try:
                     data = resp.json()
-                except ValueError:
-                    raise VerificationSendError(f"SMS.ru returned non-JSON response: {resp.status_code}")
+                except ValueError as e:
+                    raise VerificationSendError(f"SMS.ru returned non-JSON response: {resp.status_code}") from e
                 if data.get("status") != "OK":
                     logger.error(f"SMS.ru send failed: {data.get('status_text', 'Unknown')}")
                     raise VerificationSendError(f"SMS.ru error: {data.get('status_text', 'Unknown')}")
         except httpx.HTTPError as e:
-            raise VerificationSendError(f"SMS.ru request failed: {e}")
+            raise VerificationSendError(f"SMS.ru request failed: {e}") from e
 
     async def validate_config(self) -> bool:
         try:
@@ -59,10 +66,10 @@ class SmsRuProvider(BaseVerificationProvider):
                 )
                 try:
                     data = resp.json()
-                except ValueError:
-                    raise VerificationConfigError(f"SMS.ru returned non-JSON response: {resp.status_code}")
+                except ValueError as e:
+                    raise VerificationConfigError(f"SMS.ru returned non-JSON response: {resp.status_code}") from e
                 if data.get("status") == "OK":
                     return True
                 raise VerificationConfigError(f"SMS.ru auth failed: {data.get('status_text', 'Unknown')}")
         except httpx.HTTPError as e:
-            raise VerificationConfigError(f"SMS.ru connection failed: {e}")
+            raise VerificationConfigError(f"SMS.ru connection failed: {e}") from e

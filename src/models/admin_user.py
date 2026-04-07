@@ -1,9 +1,12 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, func
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, String, func
+from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
+
 from src.db.base import Base
+
 
 class AdminUser(Base):
     __tablename__ = "admin_users"
@@ -16,4 +19,4 @@ class AdminUser(Base):
     is_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now())

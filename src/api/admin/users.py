@@ -1,13 +1,15 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, or_
+from pydantic import BaseModel
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin, get_current_superadmin
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.schemas.auth import UserRead
 from src.schemas.service import UserSearchResult
-from pydantic import BaseModel
 
 
 class UserUpdateAdmin(BaseModel):

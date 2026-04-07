@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
+
 from pydantic import BaseModel, Field
+
 
 class ApiKeyCreate(BaseModel):
     name: str = Field(..., max_length=255)

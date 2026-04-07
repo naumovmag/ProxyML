@@ -1,5 +1,6 @@
 import pytest
-from src.utils.crypto import hash_password, verify_password, generate_api_key, hash_api_key, get_key_prefix
+
+from src.utils.crypto import generate_api_key, get_key_prefix, hash_api_key, hash_password, verify_password
 
 
 @pytest.mark.asyncio

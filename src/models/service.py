@@ -1,9 +1,12 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, func
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
+
 from src.db.base import Base
+
 
 class Service(Base):
     __tablename__ = "services"
@@ -32,5 +35,5 @@ class Service(Base):
     fallback_service_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("services.id", ondelete="SET NULL"), nullable=True)
     fallback_on_statuses: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=lambda: [502, 503, 504])
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now(), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), onupdate=lambda: datetime.now(UTC))

@@ -1,6 +1,8 @@
 import logging
+
 import httpx
-from src.services.email.base import BaseEmailProvider, EmailMessage, EmailSendError, EmailConfigError
+
+from src.services.email.base import BaseEmailProvider, EmailConfigError, EmailMessage, EmailSendError
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,7 @@ class SendGridEmailProvider(BaseEmailProvider):
                     logger.error(f"SendGrid error {resp.status_code}: {resp.text}")
                     raise EmailSendError(f"SendGrid API error: {resp.status_code}")
         except httpx.HTTPError as e:
-            raise EmailSendError(f"SendGrid request failed: {e}")
+            raise EmailSendError(f"SendGrid request failed: {e}") from e
 
     async def validate_config(self) -> bool:
         try:
@@ -52,4 +54,4 @@ class SendGridEmailProvider(BaseEmailProvider):
                     return True
                 raise EmailConfigError(f"SendGrid auth failed: {resp.status_code}")
         except httpx.HTTPError as e:
-            raise EmailConfigError(f"SendGrid connection failed: {e}")
+            raise EmailConfigError(f"SendGrid connection failed: {e}") from e

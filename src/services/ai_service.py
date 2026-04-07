@@ -1,8 +1,10 @@
 import json
 import logging
+
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models.system_settings import SystemSettings
 from src.services.service_registry import get_service_by_slug
 
@@ -69,10 +71,10 @@ async def call_llm(
             return content
     except httpx.HTTPStatusError as e:
         logger.error(f"LLM call failed: {e.response.status_code} {e.response.text[:500]}")
-        raise AICallError(f"LLM returned {e.response.status_code}")
+        raise AICallError(f"LLM returned {e.response.status_code}") from e
     except Exception as e:
         logger.error(f"LLM call error: {e}")
-        raise AICallError(f"Failed to call LLM: {str(e)}")
+        raise AICallError(f"Failed to call LLM: {e!s}") from e
 
 
 def _extract_json(text: str) -> dict:

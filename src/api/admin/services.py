@@ -1,19 +1,27 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
-from src.services.service_registry import (
-    list_services, get_service_by_id, get_service_by_slug, create_service, update_service, delete_service,
-    FallbackValidationError,
-)
-from src.services.service_access import check_service_access, list_accessible_services
-from src.schemas.service import ServiceCreate, ServiceUpdate, ServiceRead, ServiceShareCreate, ServiceShareRead
+from src.db.session import get_async_session
+from src.models.admin_user import AdminUser
 from src.models.service_group import ServiceGroup
 from src.models.service_share import ServiceShare
-from src.models.admin_user import AdminUser
+from src.schemas.service import ServiceCreate, ServiceRead, ServiceShareCreate, ServiceShareRead, ServiceUpdate
+from src.services.service_access import check_service_access, list_accessible_services
+from src.services.service_registry import (
+    FallbackValidationError,
+    create_service,
+    delete_service,
+    get_service_by_id,
+    get_service_by_slug,
+    list_services,
+    update_service,
+)
 
 router = APIRouter()
 
@@ -63,7 +71,7 @@ async def admin_create_service(
     try:
         return await create_service(session, data, owner_id=admin.id)
     except FallbackValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.put("/services/{service_id}", response_model=ServiceRead)
@@ -95,7 +103,7 @@ async def admin_update_service(
     try:
         svc = await update_service(session, service_id, data)
     except FallbackValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return svc
 
 
@@ -298,8 +306,8 @@ async def import_services(
     content = await file.read()
     try:
         data = json.loads(content)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise HTTPException(status_code=400, detail="Invalid JSON file")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise HTTPException(status_code=400, detail="Invalid JSON file") from e
 
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="Expected JSON object with 'services' and optional 'groups'")
@@ -390,7 +398,7 @@ async def import_services(
             if fallback_slug:
                 fallback_links.append((slug, fallback_slug))
         except Exception as e:
-            errors.append(f"Item {i} (slug={item.get('slug', '?')}): {str(e)}")
+            errors.append(f"Item {i} (slug={item.get('slug', '?')}): {e!s}")
 
     # Second pass: resolve fallback references
     for svc_slug, fb_slug in fallback_links:
@@ -401,7 +409,7 @@ async def import_services(
                 svc.fallback_service_id = fb.id
                 await session.commit()
         except Exception as e:
-            errors.append(f"Fallback link {svc_slug} -> {fb_slug}: {str(e)}")
+            errors.append(f"Fallback link {svc_slug} -> {fb_slug}: {e!s}")
 
     return {
         "groups_created": groups_created,

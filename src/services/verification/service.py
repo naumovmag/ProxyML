@@ -2,19 +2,19 @@ import asyncio
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import settings
 from src.db.engine import async_session_factory
 from src.models.auth_user import AuthUser
 from src.models.verification_channel import VerificationChannel
 from src.models.verification_code import VerificationCode
 from src.services.verification.base import VerificationMessage
 from src.services.verification.registry import get_verification_provider
-from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ async def _send_verification_bg(channel_id: str, user_id: str, system_name: str,
                 auth_user_id=user.id,
                 channel_id=channel.id,
                 code_hash=_hash(raw_code),
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes),
+                expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
             )
             session.add(vc)
             await session.commit()
@@ -225,7 +225,7 @@ async def verify_code(session: AsyncSession, channel_id: UUID, code_str: str) ->
     vc = result.scalar_one_or_none()
     if not vc:
         return None
-    if vc.expires_at < datetime.now(timezone.utc):
+    if vc.expires_at < datetime.now(UTC):
         await session.delete(vc)
         await session.commit()
         return None
@@ -271,7 +271,7 @@ async def check_all_verified(session: AsyncSession, auth_system_id: UUID, user: 
 
 
 async def check_rate_limit(session: AsyncSession, user_id: UUID, channel_id: UUID, max_per_minute: int = 1, max_per_hour: int = 5) -> bool:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     minute_ago = now - timedelta(minutes=1)
     hour_ago = now - timedelta(hours=1)
 

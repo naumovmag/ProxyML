@@ -1,28 +1,37 @@
-import uuid
-import secrets
 import hashlib
-from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
-from sqlalchemy import select, delete
+import secrets
+import uuid
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from jose import JWTError, jwt
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from jose import jwt, JWTError
 
 from src.db.session import get_async_session
+from src.models.auth_refresh_token import AuthRefreshToken
 from src.models.auth_system import AuthSystem
 from src.models.auth_user import AuthUser
-from src.models.auth_refresh_token import AuthRefreshToken
-from src.schemas.auth_system import (
-    AuthRegisterRequest, AuthLoginRequest, AuthTokenResponse,
-    AuthRefreshRequest, AuthUserRead, AuthVerifyResponse,
-    AuthUpdateProfileRequest, AuthChangePasswordRequest, AuthLogoutRequest,
-)
-from src.utils.crypto import hash_password, verify_password
-from src.services.email.verification import send_verification_email, verify_email_token, check_rate_limit
 from src.models.verification_channel import VerificationChannel
-from src.schemas.verification_channel import VerifyCodeRequest, ResendCodeRequest, TelegramLinkResponse
-from src.services.verification.service import send_all_verifications, verify_code as verify_channel_code, check_all_verified, check_rate_limit as channel_rate_limit, send_verification
-from src.services.verification.telegram.linking import generate_linking_code, build_deep_link
+from src.schemas.auth_system import (
+    AuthChangePasswordRequest,
+    AuthLoginRequest,
+    AuthLogoutRequest,
+    AuthRefreshRequest,
+    AuthRegisterRequest,
+    AuthTokenResponse,
+    AuthUpdateProfileRequest,
+    AuthUserRead,
+    AuthVerifyResponse,
+)
+from src.schemas.verification_channel import ResendCodeRequest, TelegramLinkResponse, VerifyCodeRequest
+from src.services.email.verification import check_rate_limit, send_verification_email, verify_email_token
+from src.services.verification.service import check_all_verified, send_all_verifications, send_verification
+from src.services.verification.service import check_rate_limit as channel_rate_limit
+from src.services.verification.service import verify_code as verify_channel_code
+from src.services.verification.telegram.linking import build_deep_link, generate_linking_code
+from src.utils.crypto import hash_password, verify_password
 
 router = APIRouter()
 
@@ -42,8 +51,8 @@ def _create_access_token(system: AuthSystem, user: AuthUser) -> str:
         "sub": str(user.id),
         "email": user.email,
         "sys": str(system.id),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=system.access_token_ttl_minutes),
-        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(UTC) + timedelta(minutes=system.access_token_ttl_minutes),
+        "iat": datetime.now(UTC),
     }
     return jwt.encode(payload, system.jwt_secret, algorithm="HS256")
 
@@ -120,8 +129,6 @@ async def auth_register(
     # Check unique fields
     for field_def in system.registration_fields:
         if field_def.get("unique") and field_def["name"] in custom_fields:
-            from sqlalchemy import cast, String
-            from sqlalchemy.dialects.postgresql import JSONB
             existing_unique = await session.execute(
                 select(AuthUser.id).where(
                     AuthUser.auth_system_id == system.id,
@@ -149,7 +156,7 @@ async def auth_register(
     rt = AuthRefreshToken(
         auth_user_id=user.id,
         token_hash=_hash_token(refresh_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=system.refresh_token_ttl_days),
+        expires_at=datetime.now(UTC) + timedelta(days=system.refresh_token_ttl_days),
     )
     session.add(rt)
     await session.commit()
@@ -218,7 +225,7 @@ async def auth_login(
     rt = AuthRefreshToken(
         auth_user_id=user.id,
         token_hash=_hash_token(refresh_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=system.refresh_token_ttl_days),
+        expires_at=datetime.now(UTC) + timedelta(days=system.refresh_token_ttl_days),
     )
     session.add(rt)
     await session.commit()
@@ -273,7 +280,7 @@ async def auth_refresh(
     rt = result.scalar_one_or_none()
     if not rt:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-    if rt.expires_at < datetime.now(timezone.utc):
+    if rt.expires_at < datetime.now(UTC):
         await session.delete(rt)
         await session.commit()
         raise HTTPException(status_code=401, detail="Refresh token expired")
@@ -293,7 +300,7 @@ async def auth_refresh(
     new_rt = AuthRefreshToken(
         auth_user_id=user.id,
         token_hash=_hash_token(new_refresh_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=system.refresh_token_ttl_days),
+        expires_at=datetime.now(UTC) + timedelta(days=system.refresh_token_ttl_days),
     )
     session.add(new_rt)
     await session.commit()

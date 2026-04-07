@@ -1,14 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.services.ai_service import (
-    ai_parse_curl, ai_analyze_error, ai_diagnose_health,
-    ai_summarize_dashboard, ai_generate_description, ai_generate_test_params,
+    AICallError,
+    AINotConfiguredError,
+    ai_analyze_error,
+    ai_diagnose_health,
+    ai_generate_description,
     ai_generate_email_template,
-    AINotConfiguredError, AICallError,
+    ai_generate_test_params,
+    ai_parse_curl,
+    ai_summarize_dashboard,
 )
 
 router = APIRouter()
@@ -19,7 +25,7 @@ def _handle_ai_error(e: Exception):
         raise HTTPException(status_code=422, detail=str(e))
     if isinstance(e, AICallError):
         raise HTTPException(status_code=502, detail=str(e))
-    raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+    raise HTTPException(status_code=500, detail=f"AI error: {e!s}")
 
 
 class ParseCurlRequest(BaseModel):
@@ -84,7 +90,7 @@ async def parse_curl(
     except (AINotConfiguredError, AICallError) as e:
         _handle_ai_error(e)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse cURL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse cURL: {e!s}") from e
 
 
 @router.post("/ai/analyze-error", response_model=AITextResponse)
@@ -170,7 +176,7 @@ async def generate_test_params(
     except (AINotConfiguredError, AICallError) as e:
         _handle_ai_error(e)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate test params: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate test params: {e!s}") from e
 
 
 class GenerateEmailTemplateRequest(BaseModel):
@@ -192,4 +198,4 @@ async def generate_email_template(
     except (AINotConfiguredError, AICallError) as e:
         _handle_ai_error(e)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate email template: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate email template: {e!s}") from e

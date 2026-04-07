@@ -1,20 +1,21 @@
-import uuid
-import time
 import json
 import logging
+import time
+import uuid
+
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
-from fastapi.responses import StreamingResponse, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, desc, delete
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
-from src.services.service_registry import get_service_by_id
-from src.services.service_access import check_service_access
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
-from src.models.playground import PlaygroundPreset, PlaygroundHistory
-from src.proxy.client import get_http_client, build_service_timeout
+from src.models.playground import PlaygroundHistory, PlaygroundPreset
+from src.proxy.client import build_service_timeout, get_http_client
+from src.services.service_access import check_service_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -115,14 +116,14 @@ async def playground_quick_test(
             duration_ms=duration_ms,
             response_size=len(response.content),
         )
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         duration_ms = round((time.monotonic() - start) * 1000, 1)
-        raise HTTPException(status_code=504, detail=f"Timeout after {duration_ms}ms")
+        raise HTTPException(status_code=504, detail=f"Timeout after {duration_ms}ms") from e
     except httpx.ConnectError as e:
-        raise HTTPException(status_code=502, detail=f"Connection failed: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Connection failed: {e!s}") from e
     except Exception as e:
         logger.error(f"Quick test error: {e}")
-        raise HTTPException(status_code=502, detail=f"Request error: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Request error: {e!s}") from e
 
 
 @router.post("/playground/execute")
@@ -227,14 +228,14 @@ async def playground_execute(
             response_size=len(response.content),
         )
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         duration_ms = round((time.monotonic() - start) * 1000, 1)
-        raise HTTPException(status_code=504, detail=f"Backend timeout after {duration_ms}ms")
+        raise HTTPException(status_code=504, detail=f"Backend timeout after {duration_ms}ms") from e
     except httpx.ConnectError as e:
-        raise HTTPException(status_code=502, detail=f"Connection failed: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Connection failed: {e!s}") from e
     except Exception as e:
         logger.error(f"Playground error: {e}")
-        raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e!s}") from e
 
 
 @router.post("/playground/upload")
@@ -293,12 +294,12 @@ async def playground_upload(
             duration_ms=duration_ms,
             response_size=len(response.content),
         )
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         duration_ms = round((time.monotonic() - start) * 1000, 1)
-        raise HTTPException(status_code=504, detail=f"Backend timeout after {duration_ms}ms")
+        raise HTTPException(status_code=504, detail=f"Backend timeout after {duration_ms}ms") from e
     except Exception as e:
         logger.error(f"Playground upload error: {e}")
-        raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e!s}") from e
 
 
 # ─── Presets ───

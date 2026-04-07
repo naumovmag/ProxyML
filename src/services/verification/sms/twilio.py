@@ -1,6 +1,13 @@
 import logging
+
 import httpx
-from src.services.verification.base import BaseVerificationProvider, VerificationMessage, VerificationSendError, VerificationConfigError
+
+from src.services.verification.base import (
+    BaseVerificationProvider,
+    VerificationConfigError,
+    VerificationMessage,
+    VerificationSendError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +50,7 @@ class TwilioSmsProvider(BaseVerificationProvider):
                     logger.error(f"Twilio error: {resp.status_code}")
                     raise VerificationSendError(f"Twilio API error: {resp.status_code}")
         except httpx.HTTPError as e:
-            raise VerificationSendError(f"Twilio request failed: {e}")
+            raise VerificationSendError(f"Twilio request failed: {e}") from e
 
     async def validate_config(self) -> bool:
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}.json"
@@ -54,4 +61,4 @@ class TwilioSmsProvider(BaseVerificationProvider):
                     return True
                 raise VerificationConfigError(f"Twilio auth failed: {resp.status_code}")
         except httpx.HTTPError as e:
-            raise VerificationConfigError(f"Twilio connection failed: {e}")
+            raise VerificationConfigError(f"Twilio connection failed: {e}") from e

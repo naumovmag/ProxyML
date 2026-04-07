@@ -4,9 +4,9 @@ PROVIDERS: dict[str, type[BaseEmailProvider]] = {}
 
 
 def _register_providers():
-    from src.services.email.smtp import SMTPEmailProvider
-    from src.services.email.sendgrid import SendGridEmailProvider
     from src.services.email.mailgun import MailgunEmailProvider
+    from src.services.email.sendgrid import SendGridEmailProvider
+    from src.services.email.smtp import SMTPEmailProvider
 
     PROVIDERS["smtp"] = SMTPEmailProvider
     PROVIDERS["sendgrid"] = SendGridEmailProvider

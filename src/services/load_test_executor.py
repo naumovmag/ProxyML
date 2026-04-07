@@ -1,13 +1,13 @@
 import json
+import logging
 import time
 import uuid
-import logging
 
 import httpx
 
 from src.models.load_test import LoadTestResult
+from src.proxy.client import build_service_timeout, get_http_client
 from src.services.load_test_payloads import get_default_payload
-from src.proxy.client import get_http_client, build_service_timeout
 
 logger = logging.getLogger(__name__)
 

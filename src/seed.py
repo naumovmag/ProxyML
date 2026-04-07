@@ -1,10 +1,12 @@
 import asyncio
+
 from sqlalchemy import select
-from src.db.engine import engine, async_session_factory
-from src.models.admin_user import AdminUser
-from src.db.base import Base
+
 from src.config import settings
+from src.db.engine import async_session_factory
+from src.models.admin_user import AdminUser
 from src.utils.crypto import hash_password
+
 
 async def seed():
     async with async_session_factory() as session:

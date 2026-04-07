@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from src.api.v1 import health, services
 
 router = APIRouter(prefix="/api")

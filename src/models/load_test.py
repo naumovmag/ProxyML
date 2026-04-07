@@ -1,11 +1,11 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import String, Text, Float, Integer, ForeignKey, Index, func, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
-from src.db.base import Base, UUIDMixin, TimestampMixin
+from src.db.base import Base, TimestampMixin, UUIDMixin
 
 
 class LoadTestTask(Base, UUIDMixin, TimestampMixin):
@@ -51,7 +51,7 @@ class LoadTestResult(Base, UUIDMixin):
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
 

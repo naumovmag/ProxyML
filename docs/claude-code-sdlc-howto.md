@@ -468,9 +468,10 @@ mkdir -p .claude/skills/{tl-plan,tl-implement,tl-review,tl-fix} docs
 # ... создать 4 SKILL.md и CLAUDE.md (см. шаги 2–3)
 claude
 
-# Каждый цикл — 4 команды (шаг 6)
+# Каждый цикл — 5 команд (шаг 6)
 /tl-plan [задача]
 /tl-implement
 /tl-review
 /tl-fix
+/tl-test
 ```

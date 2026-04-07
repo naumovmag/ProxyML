@@ -1,11 +1,11 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import String, Text, Float, Integer, Boolean, ForeignKey, Index, func, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Boolean, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
-from src.db.base import Base, UUIDMixin, TimestampMixin
+from src.db.base import Base, TimestampMixin, UUIDMixin
 
 
 class PlaygroundPreset(Base, UUIDMixin, TimestampMixin):
@@ -48,7 +48,7 @@ class PlaygroundHistory(Base, UUIDMixin):
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
 

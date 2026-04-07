@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
+
 import httpx
+
 from src.models.service import Service
+
 
 class BackendAuthStrategy(ABC):
     @abstractmethod

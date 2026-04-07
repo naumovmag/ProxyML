@@ -1,11 +1,20 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
-from src.services.api_key_service import list_api_keys, create_api_key, update_api_key, delete_api_key, toggle_api_key, get_keys_for_service
-from src.schemas.api_key import ApiKeyCreate, ApiKeyUpdate, ApiKeyRead, ApiKeyCreated
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
+from src.schemas.api_key import ApiKeyCreate, ApiKeyCreated, ApiKeyRead, ApiKeyUpdate
+from src.services.api_key_service import (
+    create_api_key,
+    delete_api_key,
+    get_keys_for_service,
+    list_api_keys,
+    toggle_api_key,
+    update_api_key,
+)
 
 router = APIRouter()
 

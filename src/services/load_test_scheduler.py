@@ -1,7 +1,7 @@
 import asyncio
-import uuid
 import logging
-from datetime import datetime, timezone
+import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -99,7 +99,7 @@ class LoadTestScheduler:
 
             session.add(test_result)
             task.total_runs += 1
-            task.last_run_at = datetime.now(timezone.utc)
+            task.last_run_at = datetime.now(UTC)
             await session.commit()
 
 

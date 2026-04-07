@@ -1,5 +1,20 @@
 from fastapi import APIRouter
-from src.api.admin import auth, services, service_groups, api_keys, check, stats, users, settings, ai, playground, load_tests, auth_systems, verification_channels
+
+from src.api.admin import (
+    ai,
+    api_keys,
+    auth,
+    auth_systems,
+    check,
+    load_tests,
+    playground,
+    service_groups,
+    services,
+    settings,
+    stats,
+    users,
+    verification_channels,
+)
 
 router = APIRouter(prefix="/api/admin")
 router.include_router(auth.router, tags=["admin-auth"])

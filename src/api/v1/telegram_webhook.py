@@ -1,10 +1,12 @@
 import hashlib
 import logging
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.db.session import get_async_session
 from src.models.verification_channel import VerificationChannel
 from src.services.verification.telegram.linking import process_telegram_start

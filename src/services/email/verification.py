@@ -2,17 +2,18 @@ import asyncio
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, func
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import settings
 from src.db.engine import async_session_factory
 from src.models.auth_system import AuthSystem
 from src.models.auth_user import AuthUser
 from src.models.email_verification_token import EmailVerificationToken
-from src.services.email.base import EmailMessage, EmailSendError
+from src.services.email.base import EmailMessage
 from src.services.email.registry import get_email_provider
-from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ async def _send_verification_bg(system_id: str, user_id: str) -> None:
             token = EmailVerificationToken(
                 auth_user_id=user.id,
                 token_hash=_hash_token(raw_token),
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=system.verification_token_ttl_minutes),
+                expires_at=datetime.now(UTC) + timedelta(minutes=system.verification_token_ttl_minutes),
             )
             session.add(token)
             await session.commit()
@@ -111,7 +112,7 @@ async def verify_email_token(session: AsyncSession, token_str: str) -> AuthUser 
     token = result.scalar_one_or_none()
     if not token:
         return None
-    if token.expires_at < datetime.now(timezone.utc):
+    if token.expires_at < datetime.now(UTC):
         await session.delete(token)
         await session.commit()
         return None
@@ -129,7 +130,7 @@ async def verify_email_token(session: AsyncSession, token_str: str) -> AuthUser 
 
 async def check_rate_limit(session: AsyncSession, user_id, max_per_minute: int = 1, max_per_hour: int = 5) -> bool:
     """Return True if within rate limit, False if exceeded."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     minute_ago = now - timedelta(minutes=1)
     hour_ago = now - timedelta(hours=1)
 

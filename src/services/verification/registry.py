@@ -19,11 +19,11 @@ PROVIDER_LABELS = {
 
 
 def _register_providers():
-    from src.services.verification.email.smtp import SmtpVerificationProvider
-    from src.services.verification.email.sendgrid import SendgridVerificationProvider
     from src.services.verification.email.mailgun import MailgunVerificationProvider
-    from src.services.verification.sms.twilio import TwilioSmsProvider
+    from src.services.verification.email.sendgrid import SendgridVerificationProvider
+    from src.services.verification.email.smtp import SmtpVerificationProvider
     from src.services.verification.sms.sms_ru import SmsRuProvider
+    from src.services.verification.sms.twilio import TwilioSmsProvider
     from src.services.verification.telegram.bot import TelegramBotProvider
 
     CHANNEL_PROVIDERS["email"] = {

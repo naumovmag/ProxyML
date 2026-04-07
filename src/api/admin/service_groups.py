@@ -1,12 +1,14 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
-from src.models.service_group import ServiceGroup
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
-from src.schemas.service import ServiceGroupCreate, ServiceGroupUpdate, ServiceGroupRead
+from src.models.service_group import ServiceGroup
+from src.schemas.service import ServiceGroupCreate, ServiceGroupRead, ServiceGroupUpdate
 
 router = APIRouter()
 

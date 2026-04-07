@@ -1,26 +1,28 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.models.auth_system import AuthSystem
 from src.models.verification_channel import VerificationChannel
 from src.schemas.verification_channel import (
     VerificationChannelCreate,
-    VerificationChannelUpdate,
     VerificationChannelRead,
+    VerificationChannelUpdate,
+)
+from src.services.verification.base import (
+    VerificationConfigError,
+    VerificationMessage,
+    VerificationSendError,
 )
 from src.services.verification.registry import (
     get_all_channel_schemas,
     get_verification_provider,
-)
-from src.services.verification.base import (
-    VerificationMessage,
-    VerificationSendError,
-    VerificationConfigError,
 )
 
 router = APIRouter()
@@ -37,7 +39,7 @@ def _mask_secrets(channel: VerificationChannel) -> dict:
     secret_fields = {f["name"] for f in ch_schema.get("config_schema", []) if f.get("secret")}
     config = dict(channel.provider_config)
     for key in secret_fields:
-        if key in config and config[key]:
+        if config.get(key):
             config[key] = "***"
     return config
 
@@ -235,9 +237,9 @@ async def test_channel(
         ))
         return {"ok": True, "message": f"Test message sent to {data.to}"}
     except (VerificationSendError, VerificationConfigError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------- Валидация конфига ----------
@@ -268,6 +270,6 @@ async def validate_channel_config(
         await provider.validate_config()
         return {"ok": True}
     except (VerificationConfigError, VerificationSendError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e

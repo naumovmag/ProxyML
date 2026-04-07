@@ -56,6 +56,12 @@ export default function DashboardPage() {
   useEffect(() => { load() }, [hours])
   useEffect(() => { loadLogs() }, [filters, logsLimit])
 
+  // Auto-refresh recent logs every second
+  useEffect(() => {
+    const interval = setInterval(loadLogs, 1000)
+    return () => clearInterval(interval)
+  }, [filters, logsLimit])
+
   const [selectedLog, setSelectedLog] = useState<RecentLog | null>(null)
 
   // AI

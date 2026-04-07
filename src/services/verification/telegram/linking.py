@@ -1,7 +1,7 @@
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -27,7 +27,7 @@ async def generate_linking_code(session: AsyncSession, user_id: UUID, channel_id
         auth_user_id=user_id,
         channel_id=channel_id,
         code_hash=_hash(raw_code),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=LINKING_TTL_MINUTES),
+        expires_at=datetime.now(UTC) + timedelta(minutes=LINKING_TTL_MINUTES),
     )
     session.add(vc)
     await session.commit()
@@ -52,7 +52,7 @@ async def process_telegram_start(session: AsyncSession, chat_id: int, linking_co
     vc = result.scalar_one_or_none()
     if not vc:
         return False
-    if vc.expires_at < datetime.now(timezone.utc):
+    if vc.expires_at < datetime.now(UTC):
         await session.delete(vc)
         await session.commit()
         return False

@@ -1,9 +1,7 @@
-import time
 import logging
+import time
+
 from starlette.types import ASGIApp, Receive, Scope, Send
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
 
 logger = logging.getLogger("proxyml.access")
 

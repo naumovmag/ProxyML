@@ -64,7 +64,7 @@ class TelegramBotProvider(BaseVerificationProvider):
                     logger.error(f"Telegram error {resp.status_code}: {desc}")
                     raise VerificationSendError(f"Telegram API error: {desc}")
         except httpx.HTTPError as e:
-            raise VerificationSendError(f"Telegram request failed: {e}")
+            raise VerificationSendError(f"Telegram request failed: {e}") from e
 
     async def validate_config(self) -> bool:
         url = f"{TELEGRAM_API}/bot{self.bot_token}/getMe"
@@ -73,15 +73,15 @@ class TelegramBotProvider(BaseVerificationProvider):
                 resp = await client.get(url, timeout=10.0)
                 try:
                     data = resp.json()
-                except ValueError:
-                    raise VerificationConfigError(f"Telegram returned non-JSON response: {resp.status_code}")
+                except ValueError as e:
+                    raise VerificationConfigError(f"Telegram returned non-JSON response: {resp.status_code}") from e
                 if resp.status_code == 200 and data.get("ok"):
                     return True
                 raise VerificationConfigError(
                     f"Telegram bot token invalid: {data.get('description', 'Unknown')}"
                 )
         except httpx.HTTPError as e:
-            raise VerificationConfigError(f"Telegram connection failed: {e}")
+            raise VerificationConfigError(f"Telegram connection failed: {e}") from e
 
     async def get_bot_info(self) -> dict:
         url = f"{TELEGRAM_API}/bot{self.bot_token}/getMe"
@@ -89,8 +89,8 @@ class TelegramBotProvider(BaseVerificationProvider):
             resp = await client.get(url, timeout=10.0)
             try:
                 data = resp.json()
-            except ValueError:
-                raise VerificationConfigError(f"Telegram returned non-JSON response: {resp.status_code}")
+            except ValueError as e:
+                raise VerificationConfigError(f"Telegram returned non-JSON response: {resp.status_code}") from e
             if resp.status_code == 200 and data.get("ok"):
                 return data["result"]
             raise VerificationConfigError(

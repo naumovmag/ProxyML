@@ -1,9 +1,11 @@
 import uuid
-from sqlalchemy import select, func
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.models.admin_user import AdminUser
 from src.models.service import Service
 from src.models.service_share import ServiceShare
-from src.models.admin_user import AdminUser
 
 
 async def get_accessible_service_ids(

@@ -1,13 +1,13 @@
 import logging
 
+from src.services.email.base import EmailConfigError, EmailMessage, EmailSendError
+from src.services.email.sendgrid import SendGridEmailProvider
 from src.services.verification.base import (
     BaseVerificationProvider,
+    VerificationConfigError,
     VerificationMessage,
     VerificationSendError,
-    VerificationConfigError,
 )
-from src.services.email.sendgrid import SendGridEmailProvider
-from src.services.email.base import EmailMessage, EmailSendError, EmailConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +36,10 @@ class SendgridVerificationProvider(BaseVerificationProvider):
                 from_name=extra.get("from_name"),
             ))
         except EmailSendError as e:
-            raise VerificationSendError(str(e))
+            raise VerificationSendError(str(e)) from e
 
     async def validate_config(self) -> bool:
         try:
             return await self._provider.validate_config()
         except EmailConfigError as e:
-            raise VerificationConfigError(str(e))
+            raise VerificationConfigError(str(e)) from e

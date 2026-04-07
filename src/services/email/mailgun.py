@@ -1,6 +1,8 @@
 import logging
+
 import httpx
-from src.services.email.base import BaseEmailProvider, EmailMessage, EmailSendError, EmailConfigError
+
+from src.services.email.base import BaseEmailProvider, EmailConfigError, EmailMessage, EmailSendError
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +13,7 @@ class MailgunEmailProvider(BaseEmailProvider):
     def __init__(self, api_key: str, domain: str, region: str = "us"):
         self.api_key = api_key
         self.domain = domain
-        self.base_url = f"https://api.eu.mailgun.net" if region == "eu" else "https://api.mailgun.net"
+        self.base_url = "https://api.eu.mailgun.net" if region == "eu" else "https://api.mailgun.net"
 
     @classmethod
     def config_schema(cls) -> list[dict]:
@@ -35,7 +37,7 @@ class MailgunEmailProvider(BaseEmailProvider):
                     logger.error(f"Mailgun error {resp.status_code}: {resp.text}")
                     raise EmailSendError(f"Mailgun API error: {resp.status_code}")
         except httpx.HTTPError as e:
-            raise EmailSendError(f"Mailgun request failed: {e}")
+            raise EmailSendError(f"Mailgun request failed: {e}") from e
 
     async def validate_config(self) -> bool:
         try:
@@ -49,4 +51,4 @@ class MailgunEmailProvider(BaseEmailProvider):
                     return True
                 raise EmailConfigError(f"Mailgun auth failed: {resp.status_code}")
         except httpx.HTTPError as e:
-            raise EmailConfigError(f"Mailgun connection failed: {e}")
+            raise EmailConfigError(f"Mailgun connection failed: {e}") from e

@@ -1,11 +1,13 @@
 import uuid
-from datetime import datetime, timezone, timedelta
-from jose import jwt, JWTError
+from datetime import UTC, datetime, timedelta
+
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.config import settings
 from src.models.admin_user import AdminUser
-from src.utils.crypto import verify_password, hash_password
+from src.utils.crypto import hash_password, verify_password
 
 
 async def authenticate_admin(session: AsyncSession, username: str, password: str) -> AdminUser | None:
@@ -48,7 +50,7 @@ async def get_user_by_id(session: AsyncSession, user_id: uuid.UUID) -> AdminUser
 
 
 def create_access_token(user_id: str, is_superadmin: bool = False) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {"sub": user_id, "is_superadmin": is_superadmin, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 

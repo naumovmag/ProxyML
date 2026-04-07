@@ -1,12 +1,14 @@
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, desc, and_, case
+from sqlalchemy import and_, case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
-from src.models.request_log import RequestLog
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
+from src.models.request_log import RequestLog
 from src.services.service_access import get_accessible_service_ids
 
 router = APIRouter()
@@ -19,7 +21,7 @@ async def stats_overview(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Overall stats: total requests, avg duration, errors."""
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(UTC) - timedelta(hours=hours)
     svc_ids = await get_accessible_service_ids(session, admin.id)
     if not svc_ids:
         return {
@@ -60,7 +62,7 @@ async def stats_by_service(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(UTC) - timedelta(hours=hours)
     svc_ids = await get_accessible_service_ids(session, admin.id)
     if not svc_ids:
         return []
@@ -94,7 +96,7 @@ async def stats_by_key(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(UTC) - timedelta(hours=hours)
     svc_ids = await get_accessible_service_ids(session, admin.id)
     if not svc_ids:
         return []
@@ -134,7 +136,7 @@ async def stats_timeseries(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(UTC) - timedelta(hours=hours)
     svc_ids = await get_accessible_service_ids(session, admin.id)
     if not svc_ids:
         return []
@@ -179,7 +181,7 @@ async def stats_status_breakdown(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(UTC) - timedelta(hours=hours)
     svc_ids = await get_accessible_service_ids(session, admin.id)
     if not svc_ids:
         return []

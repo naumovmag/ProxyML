@@ -1,15 +1,17 @@
 import json
-import time
 import logging
+import time
+
 from fastapi import Request
-from fastapi.responses import StreamingResponse, Response
-from src.models.service import Service
+from fastapi.responses import Response, StreamingResponse
+
+from src.cache.proxy_cache import get_cached_response, set_cached_response
 from src.models.api_key import ApiKey
+from src.models.service import Service
 from src.proxy.base import AbstractProxyHandler, registry
-from src.proxy.client import get_http_client, build_service_timeout
+from src.proxy.client import build_service_timeout, get_http_client
 from src.proxy.streaming import stream_response
 from src.services.request_logger import log_request_fire_and_forget
-from src.cache.proxy_cache import get_cached_response, set_cached_response
 
 logger = logging.getLogger(__name__)
 

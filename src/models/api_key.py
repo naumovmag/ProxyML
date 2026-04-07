@@ -1,9 +1,12 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Integer, ForeignKey, func
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
+
 from src.db.base import Base
+
 
 class ApiKey(Base):
     __tablename__ = "api_keys"
@@ -18,4 +21,4 @@ class ApiKey(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now())

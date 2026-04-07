@@ -1,18 +1,26 @@
-import uuid
 import secrets
-from datetime import datetime, timezone, timedelta
+import uuid
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.models.auth_system import AuthSystem
 from src.models.auth_user import AuthUser
-from src.schemas.auth_system import AuthSystemCreate, AuthSystemUpdate, AuthSystemRead, AdminUpdateAuthUser, AdminResetPasswordRequest
-from src.utils.crypto import hash_password
+from src.schemas.auth_system import (
+    AdminResetPasswordRequest,
+    AdminUpdateAuthUser,
+    AuthSystemCreate,
+    AuthSystemRead,
+    AuthSystemUpdate,
+)
+from src.services.email.base import EmailConfigError, EmailMessage, EmailSendError
 from src.services.email.registry import get_all_provider_schemas, get_email_provider
-from src.services.email.base import EmailMessage, EmailSendError, EmailConfigError
+from src.utils.crypto import hash_password
 
 router = APIRouter()
 
@@ -278,9 +286,9 @@ async def test_email(
         ))
         return {"ok": True, "message": f"Test email sent to {to}"}
     except (EmailSendError, EmailConfigError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/auth-systems/{system_id}/stats")
@@ -296,7 +304,7 @@ async def auth_system_stats(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Auth system not found")
 
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(UTC) - timedelta(hours=hours)
     base_filter = AuthUser.auth_system_id == system_id
 
     total_users = await session.scalar(select(func.count()).where(base_filter)) or 0

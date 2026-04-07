@@ -1,17 +1,17 @@
-import uuid
 import logging
-from datetime import datetime, timezone
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
-from sqlalchemy import select, delete, desc, func as sa_func
+from sqlalchemy import delete, desc, select
+from sqlalchemy import func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.session import get_async_session
 from src.api.deps import get_current_admin
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
+from src.models.load_test import LoadTestResult, LoadTestTask
 from src.models.service import Service
-from src.models.load_test import LoadTestTask, LoadTestResult
 from src.services.load_test_payloads import get_default_payload
 from src.services.load_test_scheduler import scheduler
 from src.services.service_access import check_service_access

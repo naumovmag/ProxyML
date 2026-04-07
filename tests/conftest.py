@@ -1,16 +1,12 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy import pool, select, delete
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete, pool, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from src.config import settings
 from src.db.base import Base
 from src.db.session import get_async_session
-from src.config import settings
-
-from src.models import Service, ApiKey, AdminUser, RequestLog, VerificationChannel, VerificationCode
-from src.models.auth_system import AuthSystem
-from src.models.auth_user import AuthUser
-from src.models.auth_refresh_token import AuthRefreshToken
-from src.models.email_verification_token import EmailVerificationToken
+from src.models import AdminUser, ApiKey, Service
 
 TEST_DATABASE_URL = settings.database_url
 

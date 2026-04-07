@@ -1,6 +1,8 @@
 import uuid
-from sqlalchemy import select, update, delete
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models.service import Service
 from src.schemas.service import ServiceCreate, ServiceUpdate
 

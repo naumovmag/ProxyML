@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_async_session
+
 from src.api.deps import get_current_admin, get_current_superadmin
+from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.models.system_settings import SystemSettings
 from src.schemas.settings import SystemSettingsRead, SystemSettingsUpdate

@@ -1,8 +1,10 @@
 import logging
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 import aiosmtplib
-from src.services.email.base import BaseEmailProvider, EmailMessage, EmailSendError, EmailConfigError
+
+from src.services.email.base import BaseEmailProvider, EmailConfigError, EmailMessage, EmailSendError
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class SMTPEmailProvider(BaseEmailProvider):
             )
         except Exception as e:
             logger.error(f"SMTP send error: {e}")
-            raise EmailSendError(f"SMTP error: {e}")
+            raise EmailSendError(f"SMTP error: {e}") from e
 
     async def validate_config(self) -> bool:
         try:
@@ -57,4 +59,4 @@ class SMTPEmailProvider(BaseEmailProvider):
             await smtp.quit()
             return True
         except Exception as e:
-            raise EmailConfigError(f"SMTP connection failed: {e}")
+            raise EmailConfigError(f"SMTP connection failed: {e}") from e

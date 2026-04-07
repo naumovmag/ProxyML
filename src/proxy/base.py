@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
+
 from fastapi import Request
 from fastapi.responses import Response
-from src.models.service import Service
+
 from src.models.api_key import ApiKey
+from src.models.service import Service
+
 
 class AbstractProxyHandler(ABC):
     @abstractmethod

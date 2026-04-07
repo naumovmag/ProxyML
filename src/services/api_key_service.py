@@ -1,10 +1,12 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import select, delete
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models.api_key import ApiKey
 from src.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
-from src.utils.crypto import generate_api_key, hash_api_key, get_key_prefix
+from src.utils.crypto import generate_api_key, get_key_prefix, hash_api_key
 
 
 async def list_api_keys(session: AsyncSession, owner_id: uuid.UUID | None = None) -> list[ApiKey]:
@@ -38,10 +40,10 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> ApiKey | None
     api_key = result.scalar_one_or_none()
     if api_key is None:
         return None
-    if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+    if api_key.expires_at and api_key.expires_at < datetime.now(UTC):
         return None
     # Update last_used_at
-    api_key.last_used_at = datetime.now(timezone.utc)
+    api_key.last_used_at = datetime.now(UTC)
     await session.commit()
     return api_key
 

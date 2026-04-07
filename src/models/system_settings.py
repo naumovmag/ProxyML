@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Integer, func
-from sqlalchemy.orm import Mapped, mapped_column
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, Integer, String, func
 from sqlalchemy.dialects.postgresql import TIMESTAMP
+from sqlalchemy.orm import Mapped, mapped_column
+
 from src.db.base import Base
 
 
@@ -14,7 +16,7 @@ class SystemSettings(Base):
     llm_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
-        onupdate=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(UTC),
     )
