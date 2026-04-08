@@ -4,7 +4,9 @@ import {
   fetchServices, createService, updateService, deleteService, checkServiceHealth,
   exportServices, importServices, fetchServiceGroups, createServiceGroup, updateServiceGroup, deleteServiceGroup,
   shareService, getServiceShares, revokeShare, unshareService, searchUsers,
+  fetchModelRoutes, createModelRoute, deleteModelRoute, fetchAvailableModels,
   Service, ServiceCreate, ServiceGroup, ServiceGroupCreate, HealthCheckResult, ServiceShareRead, UserSearchResult,
+  ModelRoute,
 } from '@/api/services'
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors, useDroppable, closestCenter } from '@dnd-kit/core'
 import { useDraggable } from '@dnd-kit/core'
@@ -18,7 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Sparkles, FileCode, FlaskConical, Users, UserMinus, X } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Sparkles, FileCode, FlaskConical, Users, UserMinus, X, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiGenerateDescription } from '@/api/ai'
@@ -93,6 +95,14 @@ export default function ServicesPage() {
   const [shareSearchResults, setShareSearchResults] = useState<UserSearchResult[]>([])
   const [shareList, setShareList] = useState<ServiceShareRead[]>([])
   const [shareSearchLoading, setShareSearchLoading] = useState(false)
+
+  // Model Routes (unified_llm)
+  const [modelRoutes, setModelRoutes] = useState<ModelRoute[]>([])
+  const [newRouteModel, setNewRouteModel] = useState('')
+  const [newRouteTarget, setNewRouteTarget] = useState('')
+  const [newRouteOverride, setNewRouteOverride] = useState('')
+  const [targetModels, setTargetModels] = useState<string[]>([])
+  const [targetModelsLoading, setTargetModelsLoading] = useState(false)
 
   const [confirmState, setConfirmState] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void }>({ open: false, title: '', description: '', onConfirm: () => {} })
 
@@ -208,6 +218,10 @@ export default function ServicesPage() {
       is_active: s.is_active, group_id: s.group_id,
     })
     setTagsInput(s.tags.join(', '))
+    setModelRoutes([])
+    if (s.service_type === 'unified_llm') {
+      fetchModelRoutes(s.id).then((r) => setModelRoutes(r.data)).catch(() => {})
+    }
     setDialogOpen(true)
   }
 
@@ -547,12 +561,16 @@ export default function ServicesPage() {
     const isOwner = s.role !== 'shared'
     const isShared = s.role === 'shared'
     return (
-      <Card key={s.id}>
+      <Card key={s.id} className={s.service_type === 'unified_llm' ? 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20' : ''}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div className="flex items-center gap-3">
             <CardTitle className="text-lg">{s.name}</CardTitle>
             <Badge variant={s.is_active ? 'success' : 'secondary'}>{s.is_active ? 'Active' : 'Inactive'}</Badge>
-            <Badge variant="outline">{s.service_type}</Badge>
+            {s.service_type === 'unified_llm' ? (
+              <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">Unified</Badge>
+            ) : (
+              <Badge variant="outline">{s.service_type}</Badge>
+            )}
             {s.supports_streaming && <Badge variant="warning">SSE</Badge>}
             {s.cache_enabled && <Badge variant="outline">Cache</Badge>}
             {s.fallback_service_id && <Badge variant="outline">Fallback</Badge>}
@@ -578,7 +596,9 @@ export default function ServicesPage() {
               )}
               <span className="ml-1">Check</span>
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Playground"><FlaskConical className="h-4 w-4" /></Button>
+            {s.service_type !== 'unified_llm' && (
+              <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Playground"><FlaskConical className="h-4 w-4" /></Button>
+            )}
             <CurlGenerator service={s} triggerVariant="icon" />
             <Button variant="ghost" size="icon" onClick={() => handleExportService(s)} title="Export"><Download className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
@@ -626,6 +646,13 @@ export default function ServicesPage() {
           </Button>
           <Button variant="outline" onClick={openCreateGroup}><FolderPlus className="h-4 w-4 mr-2" />Add Group</Button>
           <Button onClick={() => openCreate()}><Plus className="h-4 w-4 mr-2" />Add Service</Button>
+          <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20" onClick={() => {
+            setEditId(null)
+            setForm({ ...emptyForm, service_type: 'unified_llm', base_url: 'unified://routes' })
+            setTagsInput('')
+            setModalHealth(null)
+            setDialogOpen(true)
+          }}><Zap className="h-4 w-4 mr-2" />Unify Services</Button>
         </div>
       </div>
 
@@ -721,7 +748,7 @@ export default function ServicesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editId ? 'Edit Service' : 'Add Service'}</DialogTitle>
+            <DialogTitle>{editId ? (form.service_type === 'unified_llm' ? 'Edit Unified Service' : 'Edit Service') : (form.service_type === 'unified_llm' ? 'Create Unified Service' : 'Add Service')}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -760,79 +787,218 @@ export default function ServicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Type</Label>
-                <Select value={form.service_type} onValueChange={(v) => {
-                  setField('service_type', v)
-                  // Reset fallback if it's incompatible with new type
-                  if (form.fallback_service_id) {
-                    const fb = services.find((s) => s.id === form.fallback_service_id)
-                    if (fb && fb.service_type !== v) setField('fallback_service_id', null)
-                  }
-                }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {SERVICE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                {form.service_type === 'unified_llm' ? (
+                  <div className="flex items-center h-10 px-3 rounded-md border bg-muted">
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">Unified LLM</Badge>
+                  </div>
+                ) : (
+                  <Select value={form.service_type} onValueChange={(v) => {
+                    setField('service_type', v)
+                    if (form.fallback_service_id) {
+                      const fb = services.find((s) => s.id === form.fallback_service_id)
+                      if (fb && fb.service_type !== v) setField('fallback_service_id', null)
+                    }
+                  }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SERVICE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Auth Type</Label>
-              <Select value={form.auth_type} onValueChange={(v) => setField('auth_type', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {AUTH_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Base URL</Label>
-              <Input value={form.base_url} onChange={(e) => setField('base_url', e.target.value)} required placeholder="http://backend:8080" />
-            </div>
-
-            {form.auth_type !== 'none' && (
-              <div className="grid grid-cols-2 gap-4">
+            {form.service_type !== 'unified_llm' && (
+              <>
                 <div className="space-y-2">
-                  <Label>Auth Token</Label>
-                  <Input value={form.auth_token || ''} onChange={(e) => setField('auth_token', e.target.value || null)} />
+                  <Label>Auth Type</Label>
+                  <Select value={form.auth_type} onValueChange={(v) => setField('auth_type', v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {AUTH_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Auth Header Name</Label>
-                  <Input value={form.auth_header_name || 'Authorization'} onChange={(e) => setField('auth_header_name', e.target.value)} />
+                  <Label>Base URL</Label>
+                  <Input value={form.base_url} onChange={(e) => setField('base_url', e.target.value)} required placeholder="http://backend:8080" />
+                </div>
+
+                {form.auth_type !== 'none' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Auth Token</Label>
+                      <Input value={form.auth_token || ''} onChange={(e) => setField('auth_token', e.target.value || null)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Auth Header Name</Label>
+                      <Input value={form.auth_header_name || 'Authorization'} onChange={(e) => setField('auth_header_name', e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Default Model</Label>
+                    <Input value={form.default_model || ''} onChange={(e) => setField('default_model', e.target.value || null)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Timeout (seconds)</Label>
+                    <Input type="number" min={0} value={form.timeout_seconds} onChange={(e) => { const val = parseInt(e.target.value); setField('timeout_seconds', isNaN(val) ? 0 : Math.max(0, val)); }} />
+                    <p className="text-xs text-muted-foreground">0 = без ограничения</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Health Check Path</Label>
+                    <Input value={form.health_check_path || ''} onChange={(e) => setField('health_check_path', e.target.value || null)} placeholder="/v1/models" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Health Check Method</Label>
+                    <Select value={form.health_check_method || 'GET'} onValueChange={(v) => setField('health_check_method', v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GET">GET</SelectItem>
+                        <SelectItem value="POST">POST</SelectItem>
+                        <SelectItem value="HEAD">HEAD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Model Routes for unified_llm */}
+            {form.service_type === 'unified_llm' && editId && (
+              <div className="space-y-3 rounded-md border p-4">
+                <Label className="text-sm font-medium">Model Routes</Label>
+                <p className="text-xs text-muted-foreground">
+                  Map model names to backend services. Requests with matching &quot;model&quot; parameter will be routed to the target service.
+                </p>
+                {modelRoutes.length > 0 && (
+                  <div className="space-y-2">
+                    {modelRoutes.map((route) => (
+                      <div key={route.id} className="flex items-center gap-2 text-sm bg-muted/50 rounded px-3 py-2">
+                        <Badge variant="outline" className="font-mono">{route.model_pattern === '*' ? '* (default)' : route.model_pattern}</Badge>
+                        <span className="text-muted-foreground">&rarr;</span>
+                        <span className="font-medium">{route.target_service_name || route.target_service_slug}</span>
+                        {route.override_model && route.override_model !== route.model_pattern && (
+                          <Badge variant="secondary" className="text-xs font-mono">backend: {route.override_model}</Badge>
+                        )}
+                        <Button
+                          type="button" variant="ghost" size="sm" className="ml-auto h-6 w-6 p-0"
+                          onClick={async () => {
+                            await deleteModelRoute(editId, route.id)
+                            setModelRoutes((prev) => prev.filter((r) => r.id !== route.id))
+                            toast.success('Route removed')
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Target service</Label>
+                      <Select value={newRouteTarget} onValueChange={(v) => {
+                        setNewRouteTarget(v)
+                        setNewRouteOverride('')
+                        setTargetModels([])
+                        setTargetModelsLoading(true)
+                        fetchAvailableModels(v)
+                          .then((r) => {
+                            setTargetModels(r.data.models)
+                            if (r.data.models.length === 1) {
+                              setNewRouteOverride(r.data.models[0])
+                              if (!newRouteModel) setNewRouteModel(r.data.models[0])
+                            }
+                          })
+                          .catch(() => {})
+                          .finally(() => setTargetModelsLoading(false))
+                      }}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
+                        <SelectContent>
+                          {services
+                            .filter((s) => s.id !== editId && s.service_type !== 'unified_llm')
+                            .map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name} ({s.slug})</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Backend model {targetModelsLoading && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</Label>
+                      {targetModels.length > 0 ? (
+                        <Select value={newRouteOverride} onValueChange={(v) => {
+                          setNewRouteOverride(v)
+                          if (!newRouteModel) setNewRouteModel(v)
+                        }}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select model..." /></SelectTrigger>
+                          <SelectContent>
+                            {targetModels.map((m) => (
+                              <SelectItem key={m} value={m}>{m}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={newRouteOverride}
+                          onChange={(e) => setNewRouteOverride(e.target.value)}
+                          placeholder={newRouteTarget ? 'Loading...' : 'Select service first'}
+                          className="h-8 text-sm"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Public model name (what clients send, * = default route)</Label>
+                      <Input
+                        value={newRouteModel}
+                        onChange={(e) => setNewRouteModel(e.target.value)}
+                        placeholder="e.g. qwen25-vl-72b"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button" size="sm" className="h-8"
+                      disabled={!newRouteModel || !newRouteTarget}
+                      onClick={async () => {
+                        try {
+                          const override = newRouteOverride && newRouteOverride !== newRouteModel ? newRouteOverride : null
+                          const { data: route } = await createModelRoute(editId, {
+                            model_pattern: newRouteModel,
+                            target_service_id: newRouteTarget,
+                            override_model: override,
+                          })
+                          setModelRoutes((prev) => [...prev, route])
+                          setNewRouteModel('')
+                          setNewRouteTarget('')
+                          setNewRouteOverride('')
+                          setTargetModels([])
+                          toast.success('Route added')
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.detail || 'Failed to add route')
+                        }
+                      }}
+                    >
+                    <Plus className="h-3 w-3 mr-1" /> Add
+                  </Button>
+                  </div>
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Default Model</Label>
-                <Input value={form.default_model || ''} onChange={(e) => setField('default_model', e.target.value || null)} />
+            {form.service_type === 'unified_llm' && !editId && (
+              <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                Save the service first, then configure model routes.
               </div>
-              <div className="space-y-2">
-                <Label>Timeout (seconds)</Label>
-                <Input type="number" min={0} value={form.timeout_seconds} onChange={(e) => { const val = parseInt(e.target.value); setField('timeout_seconds', isNaN(val) ? 0 : Math.max(0, val)); }} />
-                <p className="text-xs text-muted-foreground">0 = без ограничения</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Health Check Path</Label>
-                <Input value={form.health_check_path || ''} onChange={(e) => setField('health_check_path', e.target.value || null)} placeholder="/v1/models" />
-              </div>
-              <div className="space-y-2">
-                <Label>Health Check Method</Label>
-                <Select value={form.health_check_method || 'GET'} onValueChange={(v) => setField('health_check_method', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GET">GET</SelectItem>
-                    <SelectItem value="POST">POST</SelectItem>
-                    <SelectItem value="HEAD">HEAD</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center gap-2">

@@ -6,8 +6,10 @@ from alembic import context
 
 # Import all models so metadata is populated
 from src.db.base import Base
-from src.models import Service, ServiceGroup, ApiKey, AdminUser, RequestLog, PlaygroundPreset, PlaygroundHistory, LoadTestTask, LoadTestResult
+from src.models import *  # noqa: F403 — registers all models with Base.metadata
 from src.models.system_settings import SystemSettings
+from src.models.auth_system import AuthSystem  # noqa: F811
+from src.models.auth_user import AuthUser  # noqa: F811
 from src.config import settings
 
 config = context.config

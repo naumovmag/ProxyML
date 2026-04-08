@@ -30,9 +30,15 @@ async def setup_db():
     from src.utils.crypto import hash_password
     async with test_session_factory() as session:
         result = await session.execute(select(AdminUser).where(AdminUser.username == "admin"))
-        if not result.scalar_one_or_none():
-            session.add(AdminUser(username="admin", password_hash=await hash_password("admin123")))
-            await session.commit()
+        admin = result.scalar_one_or_none()
+        if not admin:
+            session.add(AdminUser(username="admin", password_hash=await hash_password("admin123"), is_approved=True))
+        else:
+            # Ensure test admin is approved and has correct password
+            admin.password_hash = await hash_password("admin123")
+            admin.is_approved = True
+            admin.is_active = True
+        await session.commit()
     yield
     # Clean up ONLY test-created data
     async with test_session_factory() as session:

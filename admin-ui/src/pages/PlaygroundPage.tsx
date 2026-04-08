@@ -28,6 +28,7 @@ const TYPE_LABELS: Record<string, string> = {
   stt: 'Speech-to-Text',
   tts: 'Text-to-Speech',
   custom: 'Custom',
+  unified_llm: 'Unified LLM',
 }
 
 type Tab = 'playground' | 'quick-test' | 'history'
@@ -51,7 +52,7 @@ export default function PlaygroundPage() {
   useEffect(() => {
     fetchServices()
       .then(({ data }) => {
-        const active = data.filter((s) => s.is_active)
+        const active = data.filter((s) => s.is_active && s.service_type !== 'unified_llm')
         setServices(active)
         const initial = navServiceId && active.find((s) => s.id === navServiceId)
           ? navServiceId

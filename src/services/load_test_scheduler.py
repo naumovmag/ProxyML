@@ -95,7 +95,7 @@ class LoadTestScheduler:
                 self.stop_task(task_id)
                 return
 
-            test_result = await execute_single_test(task, service)
+            test_result = await execute_single_test(task, service, session=session)
 
             session.add(test_result)
             task.total_runs += 1

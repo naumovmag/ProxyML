@@ -225,3 +225,6 @@ class GenericProxyHandler(AbstractProxyHandler):
 
 # Register the default handler
 registry.set_default(GenericProxyHandler())
+
+# Import to trigger registration of unified_llm handler
+import src.proxy.unified_llm  # noqa: F401, E402

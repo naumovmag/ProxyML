@@ -69,3 +69,5 @@ alembic/versions/__pycache__/
 *.log
 *.bak
 *.tmp
+/admin-ui/.omc/
+/.omc/

@@ -7,6 +7,7 @@ from src.api.admin import (
     auth_systems,
     check,
     load_tests,
+    model_routes,
     playground,
     service_groups,
     services,
@@ -30,3 +31,4 @@ router.include_router(playground.router, tags=["admin-playground"])
 router.include_router(load_tests.router, tags=["admin-load-tests"])
 router.include_router(auth_systems.router, tags=["admin-auth-systems"])
 router.include_router(verification_channels.router, tags=["admin-verification-channels"])
+router.include_router(model_routes.router, tags=["admin-model-routes"])

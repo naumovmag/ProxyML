@@ -42,6 +42,7 @@ function getTemplateForService(service: Service) {
   const model = service.default_model || 'your-model'
   switch (service.service_type) {
     case 'llm_chat':
+    case 'unified_llm':
       return {
         path: 'v1/chat/completions',
         body: { model, messages: [{ role: 'user', content: 'Hello' }], max_tokens: 100 },

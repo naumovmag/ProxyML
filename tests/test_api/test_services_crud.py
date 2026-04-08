@@ -29,7 +29,7 @@ async def test_create_and_list_service(client: AsyncClient, admin_headers: dict)
     assert any(s["id"] == service_id for s in services)
 
     # Public catalog
-    resp = await client.get("/api/v1/services")
+    resp = await client.get("/api/services")
     assert resp.status_code == 200
     catalog = resp.json()
     assert any(s["slug"] == "test-svc" for s in catalog)

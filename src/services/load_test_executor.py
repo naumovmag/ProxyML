@@ -4,8 +4,12 @@ import time
 import uuid
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.load_test import LoadTestResult
+from src.models.model_route import ModelRoute
+from src.models.service import Service
 from src.proxy.client import build_service_timeout, get_http_client
 from src.services.load_test_payloads import get_default_payload
 
@@ -30,7 +34,34 @@ def _apply_auth(headers: dict, service) -> str | None:
     return None
 
 
-async def execute_single_test(task, service) -> LoadTestResult:
+async def _resolve_unified_target(session: AsyncSession, service, body: dict | None):
+    """For unified_llm services, resolve target service from model in body."""
+    if service.service_type != "unified_llm" or session is None:
+        return service
+    model_name = body.get("model") if isinstance(body, dict) else None
+    result = await session.execute(
+        select(ModelRoute)
+        .where(ModelRoute.service_id == service.id)
+        .order_by(ModelRoute.priority)
+    )
+    routes = result.scalars().all()
+    default_route = None
+    for route in routes:
+        if route.model_pattern == "*":
+            default_route = route
+            continue
+        if model_name and route.model_pattern == model_name:
+            target = await session.get(Service, route.target_service_id)
+            if target and target.is_active:
+                return target
+    if default_route:
+        target = await session.get(Service, default_route.target_service_id)
+        if target and target.is_active:
+            return target
+    return service
+
+
+async def execute_single_test(task, service, session: AsyncSession | None = None) -> LoadTestResult:
     path = task.test_path
     body = task.test_body
     if body is None:
@@ -48,15 +79,18 @@ async def execute_single_test(task, service) -> LoadTestResult:
         nonce = uuid.uuid4().hex[:8]
         body = {**body, "messages": [*body["messages"], {"role": "user", "content": f"[nonce:{nonce}]"}]}
 
-    target_url = _build_target(service, path)
+    # For unified_llm: resolve actual target service
+    actual_service = await _resolve_unified_target(session, service, body)
+
+    target_url = _build_target(actual_service, path)
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
-    if service.extra_headers:
-        headers.update(service.extra_headers)
+    if actual_service.extra_headers:
+        headers.update(actual_service.extra_headers)
     if task.test_headers:
         headers.update(task.test_headers)
 
-    query_suffix = _apply_auth(headers, service)
+    query_suffix = _apply_auth(headers, actual_service)
     if query_suffix:
         sep = "&" if "?" in target_url else "?"
         target_url += f"{sep}{query_suffix}"
@@ -68,7 +102,7 @@ async def execute_single_test(task, service) -> LoadTestResult:
         else:
             content = json.dumps(body).encode()
 
-    timeout = build_service_timeout(service.timeout_seconds)
+    timeout = build_service_timeout(actual_service.timeout_seconds)
     client = await get_http_client()
     start = time.monotonic()
 

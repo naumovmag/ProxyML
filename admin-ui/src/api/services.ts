@@ -165,3 +165,35 @@ export const unshareService = (serviceId: string) =>
 
 export const searchUsers = (query: string) =>
   api.get<UserSearchResult[]>(`/admin/users-search`, { params: { q: query } })
+
+// Model Routes (unified_llm)
+export interface ModelRoute {
+  id: string
+  service_id: string
+  model_pattern: string
+  target_service_id: string
+  target_service_name: string | null
+  target_service_slug: string | null
+  priority: number
+  override_model: string | null
+  created_at: string
+}
+
+export interface ModelRouteCreate {
+  model_pattern: string
+  target_service_id: string
+  priority?: number
+  override_model?: string | null
+}
+
+export const fetchModelRoutes = (serviceId: string) =>
+  api.get<ModelRoute[]>(`/admin/services/${serviceId}/model-routes`)
+
+export const createModelRoute = (serviceId: string, data: ModelRouteCreate) =>
+  api.post<ModelRoute>(`/admin/services/${serviceId}/model-routes`, data)
+
+export const deleteModelRoute = (serviceId: string, routeId: string) =>
+  api.delete(`/admin/services/${serviceId}/model-routes/${routeId}`)
+
+export const fetchAvailableModels = (serviceId: string) =>
+  api.get<{ models: string[]; error?: string }>(`/admin/services/${serviceId}/available-models`)

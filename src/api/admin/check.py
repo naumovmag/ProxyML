@@ -23,7 +23,7 @@ async def check_connection(
     service, role = await check_service_access(session, service_id, admin.id)
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
-    result = await check_service_health(service)
+    result = await check_service_health(service, session=session)
     return ServiceHealthCheck(
         service_id=str(service.id),
         service_name=service.name,
@@ -49,7 +49,7 @@ async def check_all_services(
                 status="unknown",
                 detail="Service is inactive",
             )
-        result = await check_service_health(svc)
+        result = await check_service_health(svc, session=session)
         return HealthReportItem(
             service_id=str(svc.id),
             service_name=svc.name,

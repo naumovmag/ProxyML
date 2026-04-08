@@ -9,6 +9,7 @@ from src.db.session import get_async_session
 from src.models.api_key import ApiKey
 from src.models.service_share import ServiceShare
 from src.proxy.base import registry
+import src.proxy.handler  # noqa: F401 — triggers handler registration
 from src.services.service_registry import get_service_by_id, get_service_by_slug
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,9 @@ async def proxy_request(
         )
         if share_result.scalar_one_or_none() is None:
             raise HTTPException(status_code=403, detail="API key does not have access to this service")
+
+    # Pass DB session to handler via request.state (used by UnifiedLLMHandler)
+    request.state.db_session = session
 
     handler = registry.get(service.service_type)
     if handler is None:
