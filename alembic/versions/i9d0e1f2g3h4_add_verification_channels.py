@@ -16,6 +16,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Enable gen_random_uuid() for older PostgreSQL versions
+    op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+
     # 1. Create verification_channels table
     op.create_table(
         "verification_channels",
