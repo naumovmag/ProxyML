@@ -924,7 +924,7 @@ export default function ServicesPage() {
                         <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
                         <SelectContent>
                           {services
-                            .filter((s) => s.id !== editId && s.service_type !== 'unified_llm')
+                            .filter((s) => s.id !== editId && s.service_type === 'llm_chat')
                             .map((s) => (
                               <SelectItem key={s.id} value={s.id}>{s.name} ({s.slug})</SelectItem>
                             ))}
