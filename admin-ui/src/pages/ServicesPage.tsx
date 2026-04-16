@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Sparkles, FileCode, FlaskConical, Users, UserMinus, X, Zap } from 'lucide-react'
+import { Plus, Trash2, Edit, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle, Download, Upload, Copy, FolderPlus, ChevronDown, ChevronRight, GripVertical, Sparkles, FileCode, FlaskConical, Users, UserMinus, X, Zap, Layers, GitFork } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiGenerateDescription } from '@/api/ai'
@@ -96,6 +96,9 @@ export default function ServicesPage() {
   const [shareList, setShareList] = useState<ServiceShareRead[]>([])
   const [shareSearchLoading, setShareSearchLoading] = useState(false)
 
+  // Unified LLM route counts (for card display)
+  const [unifiedRouteCounts, setUnifiedRouteCounts] = useState<Record<string, number>>({})
+
   // Model Routes (unified_llm)
   const [modelRoutes, setModelRoutes] = useState<ModelRoute[]>([])
   const [newRouteModel, setNewRouteModel] = useState('')
@@ -144,7 +147,19 @@ export default function ServicesPage() {
   const [groupForm, setGroupForm] = useState<ServiceGroupCreate>({ name: '', description: null, sort_order: 0 })
 
   const load = () => {
-    fetchServices().then((r) => setServices(r.data))
+    fetchServices().then((r) => {
+      setServices(r.data)
+      // Fetch route counts for all unified_llm services in parallel
+      const unified = r.data.filter((s) => s.service_type === 'unified_llm')
+      if (unified.length > 0) {
+        Promise.all(unified.map((s) => fetchModelRoutes(s.id).then((res) => ({ id: s.id, count: res.data.length })).catch(() => ({ id: s.id, count: 0 }))))
+          .then((results) => {
+            const counts: Record<string, number> = {}
+            results.forEach(({ id, count }) => { counts[id] = count })
+            setUnifiedRouteCounts(counts)
+          })
+      }
+    })
     fetchServiceGroups().then((r) => setGroups(r.data))
   }
   useEffect(() => {
@@ -560,75 +575,148 @@ export default function ServicesPage() {
     const health = healthResults[s.id]
     const isOwner = s.role !== 'shared'
     const isShared = s.role === 'shared'
+    const isUnified = s.service_type === 'unified_llm'
+    const routeCount = isUnified ? (unifiedRouteCounts[s.id] ?? null) : null
     return (
-      <Card key={s.id} className={s.service_type === 'unified_llm' ? 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20' : ''}>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div className="flex items-center gap-3">
-            <CardTitle className="text-lg">{s.name}</CardTitle>
-            <Badge variant={s.is_active ? 'success' : 'secondary'}>{s.is_active ? 'Active' : 'Inactive'}</Badge>
-            {s.service_type === 'unified_llm' ? (
-              <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">Unified</Badge>
-            ) : (
-              <Badge variant="outline">{s.service_type}</Badge>
-            )}
-            {s.supports_streaming && <Badge variant="warning">SSE</Badge>}
-            {s.cache_enabled && <Badge variant="outline">Cache</Badge>}
-            {s.fallback_service_id && <Badge variant="outline">Fallback</Badge>}
-            {isShared && (
-              <Badge variant="secondary">Shared by {s.owner_display_name || s.owner_username}</Badge>
-            )}
-            {isOwner && (s.shared_with_count ?? 0) > 0 && (
-              <Badge variant="secondary">Shared ({s.shared_with_count})</Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => handleCheck(s.id)} disabled={health?.loading}>
-              {health?.loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : health?.result?.status === 'ok' ? (
-                <CheckCircle className="h-4 w-4 text-green-500" />
-              ) : health?.result?.status === 'warning' ? (
-                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              ) : health?.result?.status === 'error' ? (
-                <XCircle className="h-4 w-4 text-red-500" />
+      <Card key={s.id} className={isUnified ? 'border-l-[3px] border-l-foreground/40 bg-muted/20' : ''}>
+        <CardHeader className="pb-2 pt-4 px-4">
+          {/* Top row: name + actions */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              {isUnified && <Layers className="h-4 w-4 text-foreground/50 shrink-0" />}
+              <CardTitle className="text-base font-semibold leading-tight truncate max-w-xs">{s.name}</CardTitle>
+              <Badge variant={s.is_active ? 'success' : 'secondary'} className="shrink-0">
+                {s.is_active ? 'Active' : 'Inactive'}
+              </Badge>
+              {isUnified ? (
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-widest text-foreground/40 border border-border/60 rounded px-1.5 py-0.5">UNIFIED</span>
               ) : (
-                <Wifi className="h-4 w-4" />
+              <Badge variant="outline" className="shrink-0 font-mono text-xs">
+                {s.service_type}
+              </Badge>
               )}
-              <span className="ml-1">Check</span>
-            </Button>
-            {s.service_type !== 'unified_llm' && (
-              <Button variant="ghost" size="icon" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Playground"><FlaskConical className="h-4 w-4" /></Button>
-            )}
-            <CurlGenerator service={s} triggerVariant="icon" />
-            <Button variant="ghost" size="icon" onClick={() => handleExportService(s)} title="Export"><Download className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => openClone(s)} title="Clone"><Copy className="h-4 w-4" /></Button>
-            {isOwner && (
-              <>
-                <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Edit"><Edit className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" onClick={() => openShareDialog(s)} title="Share"><Users className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} title="Delete"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              </>
-            )}
-            {isShared && (
-              <Button variant="ghost" size="icon" onClick={() => handleUnshare(s)} title="Remove from list"><UserMinus className="h-4 w-4 text-destructive" /></Button>
-            )}
+              {s.supports_streaming && <Badge variant="warning" className="shrink-0">SSE</Badge>}
+              {s.cache_enabled && <Badge variant="outline" className="shrink-0">Cache</Badge>}
+              {s.fallback_service_id && <Badge variant="outline" className="shrink-0">Fallback</Badge>}
+              {isShared && (
+                <Badge variant="secondary" className="shrink-0">
+                  Shared by {s.owner_display_name || s.owner_username}
+                </Badge>
+              )}
+              {isOwner && (s.shared_with_count ?? 0) > 0 && (
+                <Badge variant="secondary" className="shrink-0">Shared ({s.shared_with_count})</Badge>
+              )}
+            </div>
+            {/* Action buttons — separated into primary and secondary groups */}
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => handleCheck(s.id)}
+                disabled={health?.loading}
+                title="Check connection"
+              >
+                {health?.loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : health?.result?.status === 'ok' ? (
+                  <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                ) : health?.result?.status === 'warning' ? (
+                  <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                ) : health?.result?.status === 'error' ? (
+                  <XCircle className="h-3.5 w-3.5 text-red-500" />
+                ) : (
+                  <Wifi className="h-3.5 w-3.5" />
+                )}
+                <span className="ml-1">Check</span>
+              </Button>
+              <div className="w-px h-5 bg-border mx-1 shrink-0" />
+              {s.service_type !== 'unified_llm' && (
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate('/playground', { state: { serviceId: s.id } })} title="Playground">
+                  <FlaskConical className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <CurlGenerator service={s} triggerVariant="icon" />
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleExportService(s)} title="Export">
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openClone(s)} title="Clone">
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              {isOwner && (
+                <>
+                  <div className="w-px h-5 bg-border mx-1 shrink-0" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(s)} title="Edit">
+                    <Edit className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openShareDialog(s)} title="Share">
+                    <Users className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDelete(s.id)} title="Delete">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+              {isShared && (
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleUnshare(s)} title="Remove from list">
+                  <UserMinus className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="text-sm text-muted-foreground space-y-1">
-            <div><span className="font-medium">URL:</span> {s.base_url}</div>
-            <div><span className="font-medium">Slug:</span> /proxy/{s.slug}/</div>
-            {s.description && <div><span className="font-medium">Description:</span> {s.description}</div>}
-            {health?.result && (
-              <div className="mt-2">
-                <span className="font-medium">Health:</span>{' '}
-                <span className={health.result.status === 'ok' ? 'text-green-500' : health.result.status === 'warning' ? 'text-yellow-500' : 'text-red-500'}>
-                  {health.result.status} - {health.result.detail}
+        <CardContent className="px-4 pb-3 pt-0">
+          {/* Metadata row — inline on wide screens, stacked on narrow */}
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-baseline gap-y-0.5 gap-x-0 text-xs text-muted-foreground">
+            <span className="font-mono truncate max-w-sm sm:max-w-none">{s.base_url}</span>
+            <span className="hidden sm:inline text-border/80 mx-2 select-none">·</span>
+            <span className="font-mono text-foreground/50">/proxy/{s.slug}/</span>
+            {s.auth_type && s.auth_type !== 'none' && (
+              <>
+                <span className="hidden sm:inline text-border/80 mx-2 select-none">·</span>
+                <span className="text-foreground/50">auth: {s.auth_type}</span>
+              </>
+            )}
+            {s.default_model && (
+              <>
+                <span className="hidden sm:inline text-border/80 mx-2 select-none">·</span>
+                <span className="text-foreground/50 truncate max-w-[160px]">model: {s.default_model}</span>
+              </>
+            )}
+            {isUnified && (
+              <>
+                <span className="hidden sm:inline text-border/80 mx-2 select-none">·</span>
+                <span className="flex items-center gap-1 text-foreground/50">
+                  <GitFork className="h-3 w-3 shrink-0" />
+                  {routeCount === null ? 'loading…' : routeCount === 0 ? 'no routes' : `${routeCount} route${routeCount === 1 ? '' : 's'}`}
                 </span>
-                {health.result.response_time_ms && <span> ({health.result.response_time_ms}ms)</span>}
-              </div>
+              </>
+            )}
+            {s.description && (
+              <p className="w-full mt-1 text-foreground/40 truncate">{s.description}</p>
             )}
           </div>
+          {health?.result && (
+            <div className={`mt-2 flex items-center gap-2 rounded px-2 py-1 text-xs ${
+              health.result.status === 'ok'
+                ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                : health.result.status === 'warning'
+                ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                : 'bg-destructive/10 text-destructive'
+            }`}>
+              {health.result.status === 'ok' ? (
+                <CheckCircle className="h-3 w-3 shrink-0" />
+              ) : health.result.status === 'warning' ? (
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+              ) : (
+                <XCircle className="h-3 w-3 shrink-0" />
+              )}
+              <span>{health.result.detail}</span>
+              {health.result.response_time_ms != null && (
+                <span className="ml-auto font-mono">{health.result.response_time_ms}ms</span>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     )
@@ -636,23 +724,34 @@ export default function ServicesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Services</h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-2" />Export</Button>
-          <Button variant="outline" onClick={handleImport}><Upload className="h-4 w-4 mr-2" />Import</Button>
-          <Button variant="outline" onClick={() => setCurlImportDialog(true)}>
-            <FileCode className="h-4 w-4 mr-2" />From cURL
+      <div className="flex items-start justify-between mb-6 gap-4">
+        <h2 className="text-2xl font-bold shrink-0">Services</h2>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          <Button variant="ghost" size="sm" onClick={handleExport} title="Export all services">
+            <Download className="h-4 w-4 mr-1.5" />Export
           </Button>
-          <Button variant="outline" onClick={openCreateGroup}><FolderPlus className="h-4 w-4 mr-2" />Add Group</Button>
-          <Button onClick={() => openCreate()}><Plus className="h-4 w-4 mr-2" />Add Service</Button>
-          <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20" onClick={() => {
+          <Button variant="ghost" size="sm" onClick={handleImport} title="Import services from JSON">
+            <Upload className="h-4 w-4 mr-1.5" />Import
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setCurlImportDialog(true)}>
+            <FileCode className="h-4 w-4 mr-1.5" />From cURL
+          </Button>
+          <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
+          <Button variant="outline" size="sm" onClick={openCreateGroup}>
+            <FolderPlus className="h-4 w-4 mr-1.5" />Add Group
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => {
             setEditId(null)
             setForm({ ...emptyForm, service_type: 'unified_llm', base_url: 'unified://routes' })
             setTagsInput('')
             setModalHealth(null)
             setDialogOpen(true)
-          }}><Zap className="h-4 w-4 mr-2" />Unify Services</Button>
+          }}>
+            <Zap className="h-4 w-4 mr-1.5" />Unify
+          </Button>
+          <Button size="sm" onClick={() => openCreate()}>
+            <Plus className="h-4 w-4 mr-1.5" />Add Service
+          </Button>
         </div>
       </div>
 
@@ -661,42 +760,45 @@ export default function ServicesPage() {
           {/* Grouped services */}
           {groupedServices.map(({ group, services: groupSvcs }) => (
             <DroppableZone key={group.id} id={group.id}>
-              <div className="space-y-3 p-2">
-                <div className="flex items-center gap-3 group">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 group px-1">
                   <button
-                    className="flex items-center gap-2 text-lg font-semibold hover:text-foreground/80 transition-colors"
+                    className="flex items-center gap-1.5 text-sm font-semibold text-foreground hover:text-foreground/70 transition-colors"
                     onClick={() => toggleGroup(group.id)}
                   >
                     {collapsedGroups[group.id]
-                      ? <ChevronRight className="h-5 w-5" />
-                      : <ChevronDown className="h-5 w-5" />
+                      ? <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      : <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     }
                     {group.name}
                   </button>
-                  <Badge variant="outline" className="text-xs">{groupSvcs.length}</Badge>
-                  {group.description && <span className="text-sm text-muted-foreground">{group.description}</span>}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openCreate(group.id)} title="Add service to group">
-                      <Plus className="h-3.5 w-3.5" />
+                  <span className="text-xs text-muted-foreground tabular-nums">{groupSvcs.length}</span>
+                  {group.description && (
+                    <span className="text-xs text-muted-foreground hidden sm:inline truncate max-w-xs">{group.description}</span>
+                  )}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openCreate(group.id)} title="Add service to group">
+                      <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditGroup(group)} title="Edit group">
-                      <Edit className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditGroup(group)} title="Edit group">
+                      <Edit className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteGroup(group.id)} title="Delete group">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    <Button variant="ghost" size="icon" className="h-6 w-6 hover:text-destructive" onClick={() => handleDeleteGroup(group.id)} title="Delete group">
+                      <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
                 {!collapsedGroups[group.id] && (
-                  <div className="grid gap-3 pl-4 border-l-2 border-border">
+                  <div className="flex flex-col gap-2 pl-5 border-l border-border/60 ml-1">
                     {groupSvcs.map((s) => (
                       <DraggableServiceCard key={s.id} service={s}>
                         {renderServiceCard(s)}
                       </DraggableServiceCard>
                     ))}
                     {groupSvcs.length === 0 && (
-                      <div className="text-sm text-muted-foreground py-4 pl-2">
-                        Empty group. Drag a service here or <button className="underline" onClick={() => openCreate(group.id)}>add one</button>
+                      <div className="text-xs text-muted-foreground py-3 pl-1">
+                        Empty group — drag a service here or{' '}
+                        <button className="underline underline-offset-2 hover:text-foreground transition-colors" onClick={() => openCreate(group.id)}>add one</button>
                       </div>
                     )}
                   </div>
@@ -707,11 +809,14 @@ export default function ServicesPage() {
 
           {/* Ungrouped services */}
           <DroppableZone id="_ungrouped">
-            <div className="space-y-3 p-2">
-              {groups.length > 0 && (
-                <div className="text-lg font-semibold text-muted-foreground">Ungrouped</div>
+            <div className="space-y-2">
+              {groups.length > 0 && ungroupedServices.length > 0 && (
+                <div className="flex items-center gap-2 px-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ungrouped</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{ungroupedServices.length}</span>
+                </div>
               )}
-              <div className="grid gap-3">
+              <div className="flex flex-col gap-2">
                 {ungroupedServices.map((s) => (
                   <DraggableServiceCard key={s.id} service={s}>
                     {renderServiceCard(s)}
@@ -719,7 +824,7 @@ export default function ServicesPage() {
                 ))}
               </div>
               {ungroupedServices.length === 0 && groups.length > 0 && (
-                <div className="text-sm text-muted-foreground py-4">
+                <div className="text-xs text-muted-foreground py-3 px-1 border border-dashed border-border/50 rounded-md text-center">
                   Drag services here to ungroup them
                 </div>
               )}
