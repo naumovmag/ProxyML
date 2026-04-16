@@ -207,6 +207,78 @@ async def stats_status_breakdown(
     ]
 
 
+@router.get("/stats/cache-savings")
+async def stats_cache_savings(
+    hours: int = Query(default=24, ge=1, le=720),
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Estimated time saved by cache hits over the given period."""
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    svc_ids = await get_accessible_service_ids(session, admin.id)
+    if not svc_ids:
+        return {"period_hours": hours, "total_saved_ms": 0, "cache_hit_count": 0, "cache_miss_count": 0}
+
+    base = and_(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+
+    origin_avg = (
+        select(
+            RequestLog.service_id.label("service_id"),
+            RequestLog.method.label("method"),
+            RequestLog.path.label("path"),
+            func.avg(RequestLog.duration_ms).label("avg_ms"),
+        )
+        .where(base, RequestLog.is_cached == False, RequestLog.status_code < 400)
+        .group_by(RequestLog.service_id, RequestLog.method, RequestLog.path)
+        .subquery()
+    )
+
+    cache_agg = (
+        select(
+            RequestLog.service_id.label("service_id"),
+            RequestLog.method.label("method"),
+            RequestLog.path.label("path"),
+            func.count().label("cache_count"),
+            func.coalesce(func.sum(RequestLog.duration_ms), 0.0).label("sum_cache_ms"),
+        )
+        .where(base, RequestLog.is_cached == True)
+        .group_by(RequestLog.service_id, RequestLog.method, RequestLog.path)
+        .subquery()
+    )
+
+    saved_expr = func.greatest(
+        cache_agg.c.cache_count * origin_avg.c.avg_ms - cache_agg.c.sum_cache_ms,
+        0.0,
+    )
+
+    total_saved = await session.scalar(
+        select(func.coalesce(func.sum(saved_expr), 0.0)).select_from(
+            cache_agg.join(
+                origin_avg,
+                and_(
+                    cache_agg.c.service_id == origin_avg.c.service_id,
+                    cache_agg.c.method == origin_avg.c.method,
+                    cache_agg.c.path == origin_avg.c.path,
+                ),
+            )
+        )
+    )
+
+    cache_hit_count = await session.scalar(
+        select(func.count()).where(base, RequestLog.is_cached == True)
+    )
+    cache_miss_count = await session.scalar(
+        select(func.count()).where(base, RequestLog.is_cached == False)
+    )
+
+    return {
+        "period_hours": hours,
+        "total_saved_ms": round(float(total_saved or 0), 1),
+        "cache_hit_count": cache_hit_count or 0,
+        "cache_miss_count": cache_miss_count or 0,
+    }
+
+
 @router.get("/stats/recent")
 async def stats_recent(
     limit: int = Query(default=50, ge=1, le=500),

@@ -89,3 +89,13 @@ export const fetchTimeseries = (hours = 24) =>
 
 export const fetchStatusBreakdown = (hours = 24) =>
   api.get<StatusBreakdown[]>(`/admin/stats/status-breakdown?hours=${hours}`)
+
+export interface CacheSavings {
+  period_hours: number
+  total_saved_ms: number
+  cache_hit_count: number
+  cache_miss_count: number
+}
+
+export const fetchCacheSavings = (hours = 24) =>
+  api.get<CacheSavings>(`/admin/stats/cache-savings?hours=${hours}`)
