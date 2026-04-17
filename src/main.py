@@ -79,9 +79,38 @@ async def lifespan(app: FastAPI):
     from src.services.load_test_scheduler import scheduler as load_test_scheduler
     await load_test_scheduler.start()
 
+    # Start Telegram polling / set webhooks for all active telegram channels
+    try:
+        from sqlalchemy import select as sa_select
+
+        from src.db.engine import async_session_factory as _sf
+        from src.models.verification_channel import VerificationChannel
+        from src.services.verification.telegram.lifecycle import apply_telegram_lifecycle
+
+        async with _sf() as _session:
+            _result = await _session.execute(
+                sa_select(VerificationChannel).where(
+                    VerificationChannel.channel_type == "telegram",
+                    VerificationChannel.is_enabled == True,
+                )
+            )
+            for _ch in _result.scalars().all():
+                await apply_telegram_lifecycle(_ch)
+            await _session.commit()
+    except Exception as _e:
+        logger.warning("Could not start Telegram lifecycle: %s", _e)
+
     yield
 
     await load_test_scheduler.stop()
+
+    # Stop all Telegram polling tasks
+    try:
+        from src.services.verification.telegram.polling import telegram_polling_manager
+        await telegram_polling_manager.stop_all()
+    except Exception as _e:
+        logger.warning("Could not stop Telegram polling: %s", _e)
+
     await close_http_client()
     await close_redis()
     logger.info("ProxyML stopped.")

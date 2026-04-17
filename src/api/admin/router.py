@@ -4,6 +4,7 @@ from src.api.admin import (
     ai,
     api_keys,
     auth,
+    auth_roles,
     auth_systems,
     check,
     load_tests,
@@ -32,3 +33,4 @@ router.include_router(load_tests.router, tags=["admin-load-tests"])
 router.include_router(auth_systems.router, tags=["admin-auth-systems"])
 router.include_router(verification_channels.router, tags=["admin-verification-channels"])
 router.include_router(model_routes.router, tags=["admin-model-routes"])
+router.include_router(auth_roles.router, tags=["admin-auth-roles"])

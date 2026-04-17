@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,6 +25,9 @@ from src.services.verification.registry import (
     get_all_channel_schemas,
     get_verification_provider,
 )
+from src.services.verification.telegram.lifecycle import apply_telegram_lifecycle
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -142,6 +146,9 @@ async def create_channel(
     session.add(channel)
     await session.commit()
     await session.refresh(channel)
+    await apply_telegram_lifecycle(channel)
+    # Persist any settings mutations (e.g. webhook_secret) written by lifecycle
+    await session.commit()
     return _channel_to_read(channel)
 
 
@@ -175,6 +182,9 @@ async def update_channel(
 
     await session.commit()
     await session.refresh(channel)
+    await apply_telegram_lifecycle(channel)
+    # Persist any settings mutations (e.g. webhook_secret) written by lifecycle
+    await session.commit()
     return _channel_to_read(channel)
 
 
@@ -199,6 +209,10 @@ async def delete_channel(
     channel = result.scalar_one_or_none()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
+
+    # Stop polling / remove webhook before deleting
+    channel.is_enabled = False
+    await apply_telegram_lifecycle(channel)
 
     await session.delete(channel)
     await session.commit()

@@ -14,17 +14,19 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
-import { ArrowLeft, Plus, Trash2, Save, Copy, Check, Users, Settings, Code, Layers, BarChart3, FlaskConical, Loader2, Send, Pencil, KeyRound, Mail, CheckCircle, XCircle, Sparkles, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, Copy, Check, Users, Settings, Code, Layers, BarChart3, FlaskConical, Loader2, Send, Pencil, KeyRound, Mail, CheckCircle, XCircle, Sparkles, ShieldCheck, Shield } from 'lucide-react'
 import { ChannelList } from '@/components/verification/ChannelList'
 import { toast } from 'sonner'
 import { RegistrationsChart } from '@/components/charts'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiGenerateEmailTemplate } from '@/api/ai'
+import { fetchRoles, setUserRoles, AuthRole } from '@/api/authRoles'
+import { RolesTab } from '@/components/auth-system/RolesTab'
 import axios from 'axios'
 
 const FIELD_TYPES = ['string', 'number', 'boolean', 'email', 'phone'] as const
 
-type Tab = 'settings' | 'verification' | 'fields' | 'users' | 'stats' | 'playground' | 'api'
+type Tab = 'settings' | 'verification' | 'fields' | 'users' | 'roles' | 'stats' | 'playground' | 'api'
 
 export default function AuthSystemDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -78,12 +80,21 @@ export default function AuthSystemDetailPage() {
   const [resetPwUser, setResetPwUser] = useState<AuthSystemUser | null>(null)
   const [resetPwValue, setResetPwValue] = useState('')
 
+  // Manage roles modal
+  const [manageRolesUser, setManageRolesUser] = useState<AuthSystemUser | null>(null)
+  const [availableRoles, setAvailableRoles] = useState<AuthRole[]>([])
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
+  const [savingRoles, setSavingRoles] = useState(false)
+
   // Stats
   const [stats, setStats] = useState<AuthSystemStatsResponse | null>(null)
   const [statsHours, setStatsHours] = useState(720)
 
   // Playground
-  const [pgAction, setPgAction] = useState<'register' | 'login' | 'me' | 'update-profile' | 'change-password' | 'refresh' | 'logout' | 'verify'>('register')
+  const [pgAction, setPgAction] = useState<
+    'register' | 'login' | 'me' | 'update-profile' | 'change-password' | 'refresh' | 'logout' | 'verify'
+    | 'list-users' | 'get-user' | 'get-user-roles' | 'set-user-roles' | 'add-user-role' | 'remove-user-role' | 'list-roles'
+  >('register')
   const [pgEmail, setPgEmail] = useState('')
   const [pgPassword, setPgPassword] = useState('')
   const [pgFields, setPgFields] = useState<Record<string, any>>({})
@@ -91,6 +102,9 @@ export default function AuthSystemDetailPage() {
   const [pgRefreshToken, setPgRefreshToken] = useState('')
   const [pgOldPassword, setPgOldPassword] = useState('')
   const [pgNewPassword, setPgNewPassword] = useState('')
+  const [pgUserId, setPgUserId] = useState('')
+  const [pgRoleId, setPgRoleId] = useState('')
+  const [pgRoleIds, setPgRoleIds] = useState('')
   const [pgResult, setPgResult] = useState<string | null>(null)
   const [pgLoading, setPgLoading] = useState(false)
   const [pgStatus, setPgStatus] = useState<number | null>(null)
@@ -291,6 +305,33 @@ export default function AuthSystemDetailPage() {
     }
   }
 
+  const openManageRoles = async (u: AuthSystemUser) => {
+    setManageRolesUser(u)
+    setSelectedRoleIds(u.roles?.map(r => r.id) || [])
+    try {
+      const { data } = await fetchRoles(id!)
+      setAvailableRoles(data)
+    } catch {
+      setAvailableRoles([])
+    }
+  }
+
+  const handleSaveRoles = async () => {
+    if (!manageRolesUser || !id) return
+    setSavingRoles(true)
+    try {
+      await setUserRoles(id, manageRolesUser.id, selectedRoleIds)
+      const { data } = await fetchAuthSystemUsers(id)
+      setUsers(data)
+      setManageRolesUser(null)
+      toast.success('Роли сохранены')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Ошибка сохранения')
+    } finally {
+      setSavingRoles(false)
+    }
+  }
+
   const executePg = async () => {
     if (!system) return
     setPgLoading(true)
@@ -315,6 +356,21 @@ export default function AuthSystemDetailPage() {
         res = await axios.post(`${base}/logout`, { refresh_token: pgRefreshToken })
       } else if (pgAction === 'verify') {
         res = await axios.get(`${base}/verify`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'list-users') {
+        res = await axios.get(`${base}/users`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'get-user') {
+        res = await axios.get(`${base}/users/${pgUserId}`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'get-user-roles') {
+        res = await axios.get(`${base}/users/${pgUserId}/roles`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'set-user-roles') {
+        const ids = pgRoleIds.split(',').map(s => s.trim()).filter(Boolean)
+        res = await axios.put(`${base}/users/${pgUserId}/roles`, { role_ids: ids }, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'add-user-role') {
+        res = await axios.post(`${base}/users/${pgUserId}/roles`, { role_id: pgRoleId }, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'remove-user-role') {
+        res = await axios.delete(`${base}/users/${pgUserId}/roles/${pgRoleId}`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
+      } else if (pgAction === 'list-roles') {
+        res = await axios.get(`${base}/roles`, { headers: { Authorization: `Bearer ${pgAccessToken}` } })
       }
       setPgStatus(res.status)
       setPgResult(JSON.stringify(res.data, null, 2))
@@ -339,6 +395,7 @@ export default function AuthSystemDetailPage() {
     { key: 'verification', label: 'Verification', icon: ShieldCheck },
     { key: 'fields', label: 'Fields', icon: Layers },
     { key: 'users', label: 'Users', icon: Users },
+    { key: 'roles', label: 'Роли', icon: Shield },
     { key: 'stats', label: 'Stats', icon: BarChart3 },
     { key: 'playground', label: 'Playground', icon: FlaskConical },
     { key: 'api', label: 'API Docs', icon: Code },
@@ -420,6 +477,62 @@ export default function AuthSystemDetailPage() {
       description: 'Invalidate refresh token. Use on user logout.',
       curl: `curl -X POST ${baseUrl}/logout \\\n  -H "Content-Type: application/json" \\\n  -d '{"refresh_token": "abc..."}'`,
       response: '{\n  "ok": true\n}',
+    },
+    {
+      title: 'List Users',
+      method: 'GET',
+      path: '/users',
+      description: 'Admin-only (user must have an admin role). Returns all users in this auth system.',
+      curl: `curl -X GET "${baseUrl}/users" \\\n  -H "Authorization: Bearer ACCESS_TOKEN"`,
+      response: `[\n  {\n    "id": "uuid",\n    "email": "user@example.com",\n    "is_active": true,\n    "created_at": "2026-04-17T00:00:00Z",\n    "roles": [{"id": "uuid", "slug": "admin", "name": "Admin", "is_admin_role": true}]\n  }\n]`,
+    },
+    {
+      title: 'Get User',
+      method: 'GET',
+      path: '/users/{user_id}',
+      description: 'Admin-only. Get details of a specific user.',
+      curl: `curl -X GET "${baseUrl}/users/USER_ID" \\\n  -H "Authorization: Bearer ACCESS_TOKEN"`,
+      response: `{\n  "id": "uuid",\n  "email": "user@example.com",\n  "is_active": true,\n  "created_at": "2026-04-17T00:00:00Z",\n  "roles": [...]\n}`,
+    },
+    {
+      title: 'Get User Roles',
+      method: 'GET',
+      path: '/users/{user_id}/roles',
+      description: 'Admin-only. List roles assigned to a user.',
+      curl: `curl -X GET "${baseUrl}/users/USER_ID/roles" \\\n  -H "Authorization: Bearer ACCESS_TOKEN"`,
+      response: `[\n  {"id": "uuid", "slug": "admin", "name": "Admin", "is_admin_role": true, "is_default": false, ...}\n]`,
+    },
+    {
+      title: 'Set User Roles',
+      method: 'PUT',
+      path: '/users/{user_id}/roles',
+      description: 'Admin-only. Replace all roles of a user. Body: { role_ids: [] }.',
+      curl: `curl -X PUT "${baseUrl}/users/USER_ID/roles" \\\n  -H "Authorization: Bearer ACCESS_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"role_ids": ["uuid1", "uuid2"]}'`,
+      response: `[ {...role1...}, {...role2...} ]`,
+    },
+    {
+      title: 'Add User Role',
+      method: 'POST',
+      path: '/users/{user_id}/roles',
+      description: 'Admin-only. Add a single role to a user. Body: { role_id }.',
+      curl: `curl -X POST "${baseUrl}/users/USER_ID/roles" \\\n  -H "Authorization: Bearer ACCESS_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"role_id": "uuid"}'`,
+      response: `204 No Content`,
+    },
+    {
+      title: 'Remove User Role',
+      method: 'DELETE',
+      path: '/users/{user_id}/roles/{role_id}',
+      description: 'Admin-only. Remove a role from a user. Cannot remove your own last admin role.',
+      curl: `curl -X DELETE "${baseUrl}/users/USER_ID/roles/ROLE_ID" \\\n  -H "Authorization: Bearer ACCESS_TOKEN"`,
+      response: `204 No Content`,
+    },
+    {
+      title: 'List Roles',
+      method: 'GET',
+      path: '/roles',
+      description: 'Admin-only. List all roles in the auth system.',
+      curl: `curl -X GET "${baseUrl}/roles" \\\n  -H "Authorization: Bearer ACCESS_TOKEN"`,
+      response: `[ {"id": "uuid", "slug": "admin", "name": "Admin", "is_admin_role": true, ...} ]`,
     },
   ]
 
@@ -620,6 +733,7 @@ export default function AuthSystemDetailPage() {
                     {system.registration_fields.map(f => (
                       <th key={f.name} className="pb-2 pr-4">{f.name}</th>
                     ))}
+                    <th className="pb-2 pr-4">Роли</th>
                     <th className="pb-2 pr-4">Created</th>
                     <th className="pb-2"></th>
                   </tr>
@@ -644,14 +758,25 @@ export default function AuthSystemDetailPage() {
                           {u.custom_fields[f.name]?.toString() ?? '-'}
                         </td>
                       ))}
+                      <td className="py-2 pr-4">
+                        <div className="flex flex-wrap gap-1">
+                          {u.roles && u.roles.length > 0
+                            ? u.roles.map(r => <Badge key={r.id} variant="secondary" className="text-xs">{r.name}</Badge>)
+                            : <span className="text-xs text-muted-foreground">—</span>
+                          }
+                        </div>
+                      </td>
                       <td className="py-2 pr-4 text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
                       <td className="py-2">
                         <div className="flex gap-1">
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => openEditUser(u)} title="Edit">
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => openEditUser(u)} title="Редактировать">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { setResetPwUser(u); setResetPwValue('') }} title="Reset password">
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { setResetPwUser(u); setResetPwValue('') }} title="Сбросить пароль">
                             <KeyRound className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => openManageRoles(u)} title="Управлять ролями">
+                            <ShieldCheck className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="outline"
@@ -671,7 +796,7 @@ export default function AuthSystemDetailPage() {
                   ))}
                   {users.length === 0 && (
                     <tr>
-                      <td colSpan={4 + system.registration_fields.length} className="py-8 text-center text-muted-foreground">
+                      <td colSpan={5 + system.registration_fields.length} className="py-8 text-center text-muted-foreground">
                         No users registered yet
                       </td>
                     </tr>
@@ -682,6 +807,9 @@ export default function AuthSystemDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Roles Tab */}
+      {tab === 'roles' && system && <RolesTab systemId={system.id} />}
 
       {/* Stats Tab */}
       {tab === 'stats' && (
@@ -770,6 +898,13 @@ export default function AuthSystemDetailPage() {
                     <SelectItem value="refresh">POST /refresh</SelectItem>
                     <SelectItem value="logout">POST /logout</SelectItem>
                     <SelectItem value="verify">GET /verify</SelectItem>
+                    <SelectItem value="list-users">GET /users</SelectItem>
+                    <SelectItem value="get-user">GET /users/{'{id}'}</SelectItem>
+                    <SelectItem value="get-user-roles">GET /users/{'{id}'}/roles</SelectItem>
+                    <SelectItem value="set-user-roles">PUT /users/{'{id}'}/roles</SelectItem>
+                    <SelectItem value="add-user-role">POST /users/{'{id}'}/roles</SelectItem>
+                    <SelectItem value="remove-user-role">DELETE /users/{'{id}'}/roles/{'{role_id}'}</SelectItem>
+                    <SelectItem value="list-roles">GET /roles</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -811,10 +946,32 @@ export default function AuthSystemDetailPage() {
                 </div>
               )}
 
-              {(pgAction === 'me' || pgAction === 'verify' || pgAction === 'update-profile' || pgAction === 'change-password') && (
+              {(pgAction === 'me' || pgAction === 'verify' || pgAction === 'update-profile' || pgAction === 'change-password'
+                || ['list-users','get-user','get-user-roles','set-user-roles','add-user-role','remove-user-role','list-roles'].includes(pgAction)) && (
                 <div className="space-y-2">
                   <Label>Access Token</Label>
                   <Input value={pgAccessToken} onChange={e => setPgAccessToken(e.target.value)} placeholder="eyJ..." className="font-mono text-xs" />
+                </div>
+              )}
+
+              {['get-user','get-user-roles','set-user-roles','add-user-role','remove-user-role'].includes(pgAction) && (
+                <div className="space-y-2">
+                  <Label>User ID</Label>
+                  <Input value={pgUserId} onChange={e => setPgUserId(e.target.value)} placeholder="uuid" className="font-mono" />
+                </div>
+              )}
+
+              {['add-user-role','remove-user-role'].includes(pgAction) && (
+                <div className="space-y-2">
+                  <Label>Role ID</Label>
+                  <Input value={pgRoleId} onChange={e => setPgRoleId(e.target.value)} placeholder="uuid" className="font-mono" />
+                </div>
+              )}
+
+              {pgAction === 'set-user-roles' && (
+                <div className="space-y-2">
+                  <Label>Role IDs (comma-separated)</Label>
+                  <Input value={pgRoleIds} onChange={e => setPgRoleIds(e.target.value)} placeholder="uuid1,uuid2" className="font-mono" />
                 </div>
               )}
 
@@ -1007,6 +1164,51 @@ export default function AuthSystemDetailPage() {
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setResetPwUser(null)}>Cancel</Button>
                 <Button onClick={handleResetPassword} disabled={resetPwValue.length < 6}>Reset Password</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Manage Roles Modal */}
+      <Dialog open={!!manageRolesUser} onOpenChange={open => { if (!open) setManageRolesUser(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Управление ролями</DialogTitle>
+          </DialogHeader>
+          {manageRolesUser && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Пользователь: <span className="font-medium text-foreground">{manageRolesUser.email}</span>
+              </p>
+              <div className="space-y-2">
+                {availableRoles.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Нет доступных ролей</p>
+                )}
+                {availableRoles.map(role => (
+                  <div key={role.id} className="flex items-start gap-3 p-3 border rounded-md">
+                    <Checkbox
+                      id={`role-${role.id}`}
+                      checked={selectedRoleIds.includes(role.id)}
+                      onCheckedChange={checked => {
+                        setSelectedRoleIds(checked
+                          ? [...selectedRoleIds, role.id]
+                          : selectedRoleIds.filter(rid => rid !== role.id)
+                        )
+                      }}
+                    />
+                    <label htmlFor={`role-${role.id}`} className="flex-1 cursor-pointer">
+                      <div className="text-sm font-medium">{role.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{role.slug}</div>
+                    </label>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setManageRolesUser(null)}>Отмена</Button>
+                <Button onClick={handleSaveRoles} disabled={savingRoles}>
+                  {savingRoles ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Сохранить
+                </Button>
               </div>
             </div>
           )}

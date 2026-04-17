@@ -122,6 +122,8 @@ class AuthUserRead(BaseModel):
     telegram_verified: bool = False
     is_active: bool
     created_at: datetime
+    roles: list[dict] = []
+    permissions: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -146,6 +148,8 @@ class AuthVerifyResponse(BaseModel):
     email_verified: bool | None = None
     phone_verified: bool | None = None
     telegram_verified: bool | None = None
+    roles: list[str] | None = None
+    permissions: list[str] | None = None
 
 
 class AdminUpdateAuthUser(BaseModel):
@@ -156,3 +160,14 @@ class AdminUpdateAuthUser(BaseModel):
 
 class AdminResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=255)
+
+
+class AuthSystemUserListRead(BaseModel):
+    id: uuid.UUID
+    email: str
+    custom_fields: dict
+    is_active: bool
+    created_at: datetime
+    roles: list[dict] = []
+
+    model_config = {"from_attributes": True}

@@ -83,6 +83,28 @@ class TelegramBotProvider(BaseVerificationProvider):
         except httpx.HTTPError as e:
             raise VerificationConfigError(f"Telegram connection failed: {e}") from e
 
+    async def set_webhook(self, webhook_url: str, secret_token: str | None = None) -> None:
+        payload: dict = {"url": webhook_url, "allowed_updates": ["message"]}
+        if secret_token:
+            payload["secret_token"] = secret_token
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{TELEGRAM_API}/bot{self.bot_token}/setWebhook", json=payload
+            )
+            data = resp.json()
+            if not data.get("ok"):
+                raise VerificationConfigError(f"setWebhook failed: {data.get('description')}")
+
+    async def delete_webhook(self) -> None:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{TELEGRAM_API}/bot{self.bot_token}/deleteWebhook",
+                json={"drop_pending_updates": True},
+            )
+            data = resp.json()
+            if not data.get("ok"):
+                logger.warning("deleteWebhook: %s", data.get("description"))
+
     async def get_bot_info(self) -> dict:
         url = f"{TELEGRAM_API}/bot{self.bot_token}/getMe"
         async with httpx.AsyncClient() as client:

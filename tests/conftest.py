@@ -15,7 +15,9 @@ from src.models import AdminUser  # noqa: F401
 # FK resolution in create_all.
 import src.models.admin_user  # noqa: F401
 import src.models.api_key  # noqa: F401
+import src.models.auth_permission  # noqa: F401
 import src.models.auth_refresh_token  # noqa: F401
+import src.models.auth_role  # noqa: F401
 import src.models.auth_system  # noqa: F401
 import src.models.auth_user  # noqa: F401
 import src.models.email_verification_token  # noqa: F401

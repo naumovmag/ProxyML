@@ -72,6 +72,21 @@ const channelSettingsFields: Record<string, SettingsFieldDef[]> = {
     { key: 'message_template', label: 'Message Template', type: 'text', placeholder: 'Your code is {{code}}' },
     { key: 'code_length', label: 'Code Length', type: 'number', placeholder: '6' },
     { key: 'code_ttl_minutes', label: 'Code TTL (minutes)', type: 'number', placeholder: '10' },
+    {
+      key: 'delivery_mode',
+      label: 'Update Delivery Mode',
+      type: 'select',
+      options: [
+        { value: 'polling', label: 'Long Polling (local)' },
+        { value: 'webhook', label: 'Webhook (requires HTTPS)' },
+      ],
+    },
+    {
+      key: 'webhook_base_url',
+      label: 'Server Base URL (for webhook)',
+      type: 'text',
+      placeholder: 'https://myproxy.example.com',
+    },
   ],
 }
 

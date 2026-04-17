@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.api.deps import get_current_admin
 from src.db.session import get_async_session
@@ -145,6 +146,7 @@ async def list_auth_system_users(
     users_result = await session.execute(
         select(AuthUser)
         .where(AuthUser.auth_system_id == system_id)
+        .options(selectinload(AuthUser.roles))
         .order_by(AuthUser.created_at.desc())
     )
     users = users_result.scalars().all()
@@ -156,6 +158,7 @@ async def list_auth_system_users(
             "email_verified": u.email_verified,
             "is_active": u.is_active,
             "created_at": u.created_at.isoformat(),
+            "roles": [{"id": str(r.id), "slug": r.slug, "name": r.name} for r in u.roles],
         }
         for u in users
     ]

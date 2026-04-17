@@ -55,6 +55,7 @@ export interface AuthSystemUser {
   email_verified: boolean
   is_active: boolean
   created_at: string
+  roles?: Array<{ id: string; slug: string; name: string }>
 }
 
 export interface ProviderField {
