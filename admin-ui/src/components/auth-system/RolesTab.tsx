@@ -475,6 +475,14 @@ export function RolesTab({ systemId }: { systemId: string }) {
               />
               <Label htmlFor="role-is-admin">Админская роль (даёт право управлять другими юзерами через API)</Label>
             </div>
+            {roleIsAdmin && (() => {
+              const existingAdmin = roles.find(r => r.is_admin_role && r.id !== editRole?.id)
+              return existingAdmin ? (
+                <p className="text-xs text-amber-500 mt-1">
+                  ⚠ Сейчас админская роль назначена «{existingAdmin.name}». При сохранении флаг будет снят с неё и назначен этой роли.
+                </p>
+              ) : null
+            })()}
             {permissions.length > 0 && (
               <div className="space-y-2">
                 <Label>Разрешения</Label>

@@ -9,9 +9,13 @@ import {
   ChevronDown,
   ChevronUp,
   FlaskConical,
+  Copy,
+  Check,
+  AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { copyToClipboard } from '@/lib/clipboard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -72,21 +76,6 @@ const channelSettingsFields: Record<string, SettingsFieldDef[]> = {
     { key: 'message_template', label: 'Message Template', type: 'text', placeholder: 'Your code is {{code}}' },
     { key: 'code_length', label: 'Code Length', type: 'number', placeholder: '6' },
     { key: 'code_ttl_minutes', label: 'Code TTL (minutes)', type: 'number', placeholder: '10' },
-    {
-      key: 'delivery_mode',
-      label: 'Update Delivery Mode',
-      type: 'select',
-      options: [
-        { value: 'polling', label: 'Long Polling (local)' },
-        { value: 'webhook', label: 'Webhook (requires HTTPS)' },
-      ],
-    },
-    {
-      key: 'webhook_base_url',
-      label: 'Server Base URL (for webhook)',
-      type: 'text',
-      placeholder: 'https://myproxy.example.com',
-    },
   ],
 }
 
@@ -121,6 +110,7 @@ export function ChannelCard({
   const [configValues, setConfigValues] = useState<Record<string, any>>({ ...channel.provider_config })
   const [settingsValues, setSettingsValues] = useState<Record<string, any>>({ ...channel.settings })
   const [isRequired, setIsRequired] = useState(channel.is_required)
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false)
 
   // Sync state with props when channel changes
   useEffect(() => {
@@ -128,6 +118,15 @@ export function ChannelCard({
     setSettingsValues({ ...channel.settings })
     setIsRequired(channel.is_required)
   }, [channel.id, channel.updated_at])
+
+  // Auto-fill webhook_base_url when mode switches to webhook and field is empty
+  useEffect(() => {
+    if (channel.channel_type !== 'telegram') return
+    const mode = settingsValues['delivery_mode'] || 'polling'
+    if (mode === 'webhook' && !settingsValues['webhook_base_url']) {
+      setSettingsValues((prev) => ({ ...prev, webhook_base_url: window.location.origin }))
+    }
+  }, [settingsValues['delivery_mode'], channel.channel_type])
 
   const Icon = channelIcons[channel.channel_type] || Mail
 
@@ -357,6 +356,97 @@ export function ChannelCard({
                   </div>
                 </div>
               )}
+
+              {/* Telegram-specific: delivery mode + webhook settings */}
+              {channel.channel_type === 'telegram' && (() => {
+                const deliveryMode = settingsValues['delivery_mode'] || 'polling'
+                const baseUrl: string = settingsValues['webhook_base_url'] || ''
+                const webhookUrl = `${baseUrl}/api/telegram/webhook/${channel.id}`
+                const isHttps = baseUrl === '' || baseUrl.startsWith('https://')
+
+                const copyWebhookUrl = async () => {
+                  const ok = await copyToClipboard(webhookUrl)
+                  if (!ok) {
+                    toast.error('Failed to copy to clipboard')
+                    return
+                  }
+                  setCopiedWebhookUrl(true)
+                  setTimeout(() => setCopiedWebhookUrl(false), 2000)
+                }
+
+                return (
+                  <div className="space-y-3 col-span-full">
+                    <h4 className="text-sm font-medium text-muted-foreground">Доставка обновлений Telegram</h4>
+
+                    {/* Delivery mode select */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Режим доставки обновлений</Label>
+                      <Select
+                        value={deliveryMode}
+                        onValueChange={(val) => handleSettingsChange('delivery_mode', val)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="polling">Long Polling</SelectItem>
+                          <SelectItem value="webhook">Webhook</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {deliveryMode === 'polling'
+                          ? 'Приложение само опрашивает Telegram. Работает локально без публичного адреса. Требует постоянно работающего backend.'
+                          : 'Telegram отправляет обновления напрямую. Требуется публичный HTTPS-адрес ProxyML. Быстрее и экономичнее при высокой нагрузке.'}
+                      </p>
+                    </div>
+
+                    {/* Webhook base URL — only shown in webhook mode */}
+                    {deliveryMode === 'webhook' && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Base URL сервера (для webhook)</Label>
+                        <Input
+                          type="text"
+                          placeholder="https://myproxy.example.com"
+                          value={baseUrl}
+                          className={!isHttps ? 'border-destructive' : ''}
+                          onChange={(e) => handleSettingsChange('webhook_base_url', e.target.value)}
+                        />
+                        {!isHttps && (
+                          <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            Требуется HTTPS
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Публичный HTTPS-адрес вашего ProxyML. Telegram должен видеть этот сервер из Интернета. HTTP не поддерживается.
+                        </p>
+                        {baseUrl && (
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="text-xs text-muted-foreground shrink-0">Webhook URL:</span>
+                            <code className="bg-muted px-2 py-1 rounded font-mono text-xs flex-1 break-all">
+                              {webhookUrl}
+                            </code>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 shrink-0"
+                              onClick={copyWebhookUrl}
+                              title="Скопировать"
+                            >
+                              {copiedWebhookUrl ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Required switch */}
               <div className="flex items-center gap-3">

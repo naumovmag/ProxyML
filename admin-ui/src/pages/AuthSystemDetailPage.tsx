@@ -23,6 +23,7 @@ import { aiGenerateEmailTemplate } from '@/api/ai'
 import { fetchRoles, setUserRoles, AuthRole } from '@/api/authRoles'
 import { RolesTab } from '@/components/auth-system/RolesTab'
 import axios from 'axios'
+import { copyToClipboard } from '@/lib/clipboard'
 
 const FIELD_TYPES = ['string', 'number', 'boolean', 'email', 'phone'] as const
 
@@ -211,8 +212,12 @@ export default function AuthSystemDetailPage() {
     setFormFields(updated)
   }
 
-  const copyText = (text: string, key: string) => {
-    navigator.clipboard.writeText(text)
+  const copyText = async (text: string, key: string) => {
+    const ok = await copyToClipboard(text)
+    if (!ok) {
+      toast.error('Failed to copy to clipboard')
+      return
+    }
     setCopiedKey(key)
     setTimeout(() => setCopiedKey(null), 2000)
   }

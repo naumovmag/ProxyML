@@ -21,6 +21,7 @@ import { Terminal, Copy, Check, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Service } from '@/api/services'
 import api from '@/api/client'
+import { copyToClipboard } from '@/lib/clipboard'
 
 interface ApiKeyInfo {
   id: string
@@ -151,8 +152,12 @@ export default function CurlGenerator({ service, method = 'POST', path, body, he
     return parts.join(' \\\n')
   }
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(buildCurl())
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(buildCurl())
+    if (!ok) {
+      toast.error('Failed to copy to clipboard')
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
     toast.success('Copied to clipboard')

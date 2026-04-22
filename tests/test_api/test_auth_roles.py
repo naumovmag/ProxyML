@@ -255,6 +255,47 @@ async def test_default_role_applied_on_registration(client: AsyncClient, admin_h
 
 
 @pytest.mark.asyncio
+async def test_only_one_admin_role_allowed(client: AsyncClient, admin_headers: dict):
+    system = await _create_auth_system(client, admin_headers)
+    sid = system["id"]
+
+    # Создаём первую админ-роль
+    r1 = (await client.post(
+        f"/api/admin/auth-systems/{sid}/roles",
+        json={"slug": "admin1", "name": "Admin 1", "is_admin_role": True, "permission_ids": []},
+        headers=admin_headers,
+    )).json()
+    assert r1["is_admin_role"] is True
+
+    # Создаём вторую — первая теряет флаг
+    r2 = (await client.post(
+        f"/api/admin/auth-systems/{sid}/roles",
+        json={"slug": "admin2", "name": "Admin 2", "is_admin_role": True, "permission_ids": []},
+        headers=admin_headers,
+    )).json()
+    assert r2["is_admin_role"] is True
+
+    # Перечитать r1 — должна быть без флага
+    r1_refetched = (await client.get(
+        f"/api/admin/auth-systems/{sid}/roles/{r1['id']}",
+        headers=admin_headers,
+    )).json()
+    assert r1_refetched["is_admin_role"] is False
+
+    # update: перенести обратно на r1
+    await client.put(
+        f"/api/admin/auth-systems/{sid}/roles/{r1['id']}",
+        json={"is_admin_role": True},
+        headers=admin_headers,
+    )
+    r2_after = (await client.get(
+        f"/api/admin/auth-systems/{sid}/roles/{r2['id']}",
+        headers=admin_headers,
+    )).json()
+    assert r2_after["is_admin_role"] is False
+
+
+@pytest.mark.asyncio
 async def test_cannot_access_other_admin_auth_system_roles(
     client: AsyncClient, admin_headers: dict
 ):

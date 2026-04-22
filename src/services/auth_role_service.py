@@ -138,6 +138,18 @@ async def _unset_existing_default(session: AsyncSession, auth_system_id: uuid.UU
         role.is_default = False
 
 
+async def _unset_existing_admin_role(session: AsyncSession, auth_system_id: uuid.UUID, exclude_role_id: uuid.UUID | None = None) -> None:
+    stmt = select(AuthRole).where(
+        AuthRole.auth_system_id == auth_system_id,
+        AuthRole.is_admin_role == True,
+    )
+    if exclude_role_id:
+        stmt = stmt.where(AuthRole.id != exclude_role_id)
+    result = await session.execute(stmt)
+    for role in result.scalars().all():
+        role.is_admin_role = False
+
+
 async def create_role(
     session: AsyncSession,
     auth_system_id: uuid.UUID,
@@ -156,6 +168,8 @@ async def create_role(
 
     if data.is_default:
         await _unset_existing_default(session, auth_system_id)
+    if data.is_admin_role:
+        await _unset_existing_admin_role(session, auth_system_id)
 
     role = AuthRole(
         auth_system_id=auth_system_id,
@@ -223,6 +237,8 @@ async def update_role(
             await _unset_existing_default(session, auth_system_id, exclude_role_id=role_id)
         role.is_default = data.is_default
     if data.is_admin_role is not None:
+        if data.is_admin_role:
+            await _unset_existing_admin_role(session, auth_system_id, exclude_role_id=role_id)
         role.is_admin_role = data.is_admin_role
 
     await session.commit()

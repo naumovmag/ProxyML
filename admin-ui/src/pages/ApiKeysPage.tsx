@@ -18,6 +18,7 @@ import {
   BarChart3, Loader2, Power, PowerOff, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { copyToClipboard } from '@/lib/clipboard'
 
 const PAGE_SIZE = 25
 
@@ -143,13 +144,16 @@ export default function ApiKeysPage() {
     }
   }
 
-  const handleCopy = () => {
-    if (newKey) {
-      navigator.clipboard.writeText(newKey)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-      toast.success('Copied to clipboard')
+  const handleCopy = async () => {
+    if (!newKey) return
+    const ok = await copyToClipboard(newKey)
+    if (!ok) {
+      toast.error('Failed to copy to clipboard')
+      return
     }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    toast.success('Copied to clipboard')
   }
 
   const handleDelete = (id: string) => {
