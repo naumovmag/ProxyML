@@ -158,7 +158,7 @@ export default function AuthSystemsPage() {
                 onChange={e => setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 required
                 placeholder="my-auth"
-                pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+                pattern="^[a-z0-9][-a-z0-9]*[a-z0-9]$"
               />
               {formSlug && !slugFormatOk && (
                 <p className="text-xs text-destructive">Lowercase letters, digits and hyphens only</p>

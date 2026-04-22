@@ -117,7 +117,7 @@ class GenericProxyHandler(AbstractProxyHandler):
                     content=body if body else None,
                     timeout=timeout,
                 )
-                response = await client.send(req, stream=True)
+                response = await client.send(req, stream=True, follow_redirects=False)
 
                 response_headers = dict(response.headers)
                 for h in ("transfer-encoding", "connection", "content-length"):
@@ -163,7 +163,14 @@ class GenericProxyHandler(AbstractProxyHandler):
                     headers=headers,
                     content=body if body else None,
                     timeout=timeout,
+                    follow_redirects=False,
                 )
+
+                if response.status_code >= 400:
+                    logger.warning(
+                        "Upstream %s on %s %s (service=%s)",
+                        response.status_code, request.method, target_url, service.slug,
+                    )
 
                 duration_ms = (time.monotonic() - start) * 1000
                 log_request_fire_and_forget(

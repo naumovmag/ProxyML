@@ -868,7 +868,7 @@ export default function ServicesPage() {
                   onChange={(e) => setField('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                   required
                   placeholder="my-service"
-                  pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+                  pattern="^[a-z0-9][-a-z0-9]*[a-z0-9]$"
                 />
                 {form.slug && !slugFormatOk && (
                   <p className="text-xs text-destructive">Only lowercase letters, digits and hyphens. Must start and end with a letter or digit (min 2 chars)</p>
