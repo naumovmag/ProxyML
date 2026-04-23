@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_admin
 from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
+from src.models.api_key import ApiKey
 from src.models.request_log import RequestLog
 from src.services.service_access import get_accessible_service_ids
 
@@ -109,10 +110,12 @@ async def stats_by_key(
             func.count().filter(RequestLog.status_code >= 400).label("error_count"),
             func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
         )
+        .join(ApiKey, ApiKey.id == RequestLog.api_key_id)
         .where(
             RequestLog.created_at >= since,
             RequestLog.service_id.in_(svc_ids),
             RequestLog.api_key_id.isnot(None),
+            ApiKey.owner_id == admin.id,
         )
         .group_by(RequestLog.api_key_id, RequestLog.api_key_name)
         .order_by(desc("request_count"))

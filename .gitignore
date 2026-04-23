@@ -71,3 +71,7 @@ alembic/versions/__pycache__/
 *.tmp
 /admin-ui/.omc/
 /.omc/
+/docs/changelog/
+/docs/architecture/
+/docs/decisions/
+/.claude/
