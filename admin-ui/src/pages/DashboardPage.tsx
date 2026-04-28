@@ -14,6 +14,8 @@ import { toast } from 'sonner'
 import { RequestsOverTimeChart, LatencyOverTimeChart, StatusCodeDonut, ServiceBarChart, KeyUsageBarChart } from '@/components/charts'
 import { fetchSettings, SystemSettings } from '@/api/settings'
 import { aiSummarizeDashboard, aiAnalyzeError } from '@/api/ai'
+import { MaintenanceCard } from '@/components/MaintenanceCard'
+import { useAuthStore } from '@/store/authStore'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -37,6 +39,7 @@ function formatDuration(ms: number): string {
 }
 
 export default function DashboardPage() {
+  const currentUser = useAuthStore((s) => s.user)
   const [services, setServices] = useState<Service[]>([])
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [authSystems, setAuthSystems] = useState<AuthSystem[]>([])
@@ -70,12 +73,6 @@ export default function DashboardPage() {
 
   useEffect(() => { load() }, [hours])
   useEffect(() => { loadLogs() }, [filters, logsLimit])
-
-  // Auto-refresh recent logs every second
-  useEffect(() => {
-    const interval = setInterval(loadLogs, 1000)
-    return () => clearInterval(interval)
-  }, [filters, logsLimit])
 
   const [selectedLog, setSelectedLog] = useState<RecentLog | null>(null)
 
@@ -355,20 +352,24 @@ export default function DashboardPage() {
       {/* Recent Logs */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-lg">Recent Requests</CardTitle>
-              <Select value={String(logsLimit)} onValueChange={(v) => setLogsLimit(Number(v))}>
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                  <SelectItem value="200">200</SelectItem>
-                  <SelectItem value="500">500</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={loadLogs}>
+                  Refresh
+                </Button>
+                <Select value={String(logsLimit)} onValueChange={(v) => setLogsLimit(Number(v))}>
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="200">200</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <Select value={filters.service_slug || '_all'} onValueChange={(v) => setFilters((f) => ({ ...f, service_slug: v === '_all' ? undefined : v }))}>
@@ -482,6 +483,8 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+
+      {currentUser?.is_superadmin && <MaintenanceCard />}
 
       {/* Request Detail Dialog */}
       <Dialog open={!!selectedLog} onOpenChange={(open) => { if (!open) { setSelectedLog(null); setAiErrorAnalysis(null) } }}>

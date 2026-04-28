@@ -2,15 +2,16 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, case, desc, func, select
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_admin
+from src.cache.stats_cache import cached_or_compute
 from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.models.api_key import ApiKey
 from src.models.request_log import RequestLog
-from src.services.service_access import get_accessible_service_ids
+from src.services.service_access import get_accessible_service_ids, get_shared_service_ids
 
 router = APIRouter()
 
@@ -22,39 +23,41 @@ async def stats_overview(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Overall stats: total requests, avg duration, errors."""
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
+
+    async def _compute():
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        svc_ids = await get_accessible_service_ids(session, admin.id)
+        if not svc_ids:
+            return {
+                "period_hours": hours, "total_requests": 0, "total_errors": 0,
+                "avg_duration_ms": 0, "total_request_bytes": 0, "total_response_bytes": 0,
+            }
+        access_filter = and_(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+
+        total = await session.scalar(select(func.count()).where(access_filter))
+        errors = await session.scalar(
+            select(func.count()).where(access_filter, RequestLog.status_code >= 400)
+        )
+        avg_duration = await session.scalar(
+            select(func.avg(RequestLog.duration_ms)).where(access_filter)
+        )
+        total_request_bytes = await session.scalar(
+            select(func.coalesce(func.sum(RequestLog.request_size), 0)).where(access_filter)
+        )
+        total_response_bytes = await session.scalar(
+            select(func.coalesce(func.sum(RequestLog.response_size), 0)).where(access_filter)
+        )
+
         return {
-            "period_hours": hours, "total_requests": 0, "total_errors": 0,
-            "avg_duration_ms": 0, "total_request_bytes": 0, "total_response_bytes": 0,
+            "period_hours": hours,
+            "total_requests": total or 0,
+            "total_errors": errors or 0,
+            "avg_duration_ms": round(avg_duration or 0, 1),
+            "total_request_bytes": total_request_bytes or 0,
+            "total_response_bytes": total_response_bytes or 0,
         }
-    access_filter = and_(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
 
-    total = await session.scalar(
-        select(func.count()).where(access_filter)
-    )
-    errors = await session.scalar(
-        select(func.count()).where(access_filter, RequestLog.status_code >= 400)
-    )
-    avg_duration = await session.scalar(
-        select(func.avg(RequestLog.duration_ms)).where(access_filter)
-    )
-    total_request_bytes = await session.scalar(
-        select(func.coalesce(func.sum(RequestLog.request_size), 0)).where(access_filter)
-    )
-    total_response_bytes = await session.scalar(
-        select(func.coalesce(func.sum(RequestLog.response_size), 0)).where(access_filter)
-    )
-
-    return {
-        "period_hours": hours,
-        "total_requests": total or 0,
-        "total_errors": errors or 0,
-        "avg_duration_ms": round(avg_duration or 0, 1),
-        "total_request_bytes": total_request_bytes or 0,
-        "total_response_bytes": total_response_bytes or 0,
-    }
+    return await cached_or_compute(f"overview:{admin.id}:{hours}", ttl=30, compute=_compute)
 
 
 @router.get("/stats/by-service")
@@ -63,32 +66,35 @@ async def stats_by_service(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
-        return []
+    async def _compute():
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        svc_ids = await get_accessible_service_ids(session, admin.id)
+        if not svc_ids:
+            return []
 
-    result = await session.execute(
-        select(
-            RequestLog.service_slug,
-            func.count().label("request_count"),
-            func.count().filter(RequestLog.status_code >= 400).label("error_count"),
-            func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+        result = await session.execute(
+            select(
+                RequestLog.service_slug,
+                func.count().label("request_count"),
+                func.count().filter(RequestLog.status_code >= 400).label("error_count"),
+                func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+            )
+            .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+            .group_by(RequestLog.service_slug)
+            .order_by(desc("request_count"))
         )
-        .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
-        .group_by(RequestLog.service_slug)
-        .order_by(desc("request_count"))
-    )
 
-    return [
-        {
-            "service_slug": row.service_slug,
-            "request_count": row.request_count,
-            "error_count": row.error_count,
-            "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
-        }
-        for row in result.all()
-    ]
+        return [
+            {
+                "service_slug": row.service_slug,
+                "request_count": row.request_count,
+                "error_count": row.error_count,
+                "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
+            }
+            for row in result.all()
+        ]
+
+    return await cached_or_compute(f"by-service:{admin.id}:{hours}", ttl=60, compute=_compute)
 
 
 @router.get("/stats/by-key")
@@ -97,40 +103,43 @@ async def stats_by_key(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
-        return []
+    async def _compute():
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        svc_ids = await get_accessible_service_ids(session, admin.id)
+        if not svc_ids:
+            return []
 
-    result = await session.execute(
-        select(
-            RequestLog.api_key_id,
-            RequestLog.api_key_name,
-            func.count().label("request_count"),
-            func.count().filter(RequestLog.status_code >= 400).label("error_count"),
-            func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+        result = await session.execute(
+            select(
+                RequestLog.api_key_id,
+                RequestLog.api_key_name,
+                func.count().label("request_count"),
+                func.count().filter(RequestLog.status_code >= 400).label("error_count"),
+                func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+            )
+            .join(ApiKey, ApiKey.id == RequestLog.api_key_id)
+            .where(
+                RequestLog.created_at >= since,
+                RequestLog.service_id.in_(svc_ids),
+                RequestLog.api_key_id.isnot(None),
+                ApiKey.owner_id == admin.id,
+            )
+            .group_by(RequestLog.api_key_id, RequestLog.api_key_name)
+            .order_by(desc("request_count"))
         )
-        .join(ApiKey, ApiKey.id == RequestLog.api_key_id)
-        .where(
-            RequestLog.created_at >= since,
-            RequestLog.service_id.in_(svc_ids),
-            RequestLog.api_key_id.isnot(None),
-            ApiKey.owner_id == admin.id,
-        )
-        .group_by(RequestLog.api_key_id, RequestLog.api_key_name)
-        .order_by(desc("request_count"))
-    )
 
-    return [
-        {
-            "api_key_id": str(row.api_key_id),
-            "api_key_name": row.api_key_name,
-            "request_count": row.request_count,
-            "error_count": row.error_count,
-            "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
-        }
-        for row in result.all()
-    ]
+        return [
+            {
+                "api_key_id": str(row.api_key_id),
+                "api_key_name": row.api_key_name,
+                "request_count": row.request_count,
+                "error_count": row.error_count,
+                "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
+            }
+            for row in result.all()
+        ]
+
+    return await cached_or_compute(f"by-key:{admin.id}:{hours}", ttl=60, compute=_compute)
 
 
 @router.get("/stats/timeseries")
@@ -139,43 +148,47 @@ async def stats_timeseries(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
-        return []
+    async def _compute():
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        svc_ids = await get_accessible_service_ids(session, admin.id)
+        if not svc_ids:
+            return []
 
-    if hours <= 6:
-        bucket = "minute"
-    elif hours <= 168:
-        bucket = "hour"
-    else:
-        bucket = "day"
+        if hours <= 6:
+            bucket = "minute"
+        elif hours <= 168:
+            bucket = "hour"
+        else:
+            bucket = "day"
 
-    bucket_col = func.date_trunc(bucket, RequestLog.created_at).label("bucket")
+        bucket_col = func.date_trunc(bucket, RequestLog.created_at).label("bucket")
 
-    result = await session.execute(
-        select(
-            bucket_col,
-            func.count().label("total"),
-            func.count().filter(RequestLog.status_code < 400).label("success"),
-            func.count().filter(RequestLog.status_code >= 400).label("errors"),
-            func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+        result = await session.execute(
+            select(
+                bucket_col,
+                func.count().label("total"),
+                func.count().filter(RequestLog.status_code < 400).label("success"),
+                func.count().filter(RequestLog.status_code >= 400).label("errors"),
+                func.avg(RequestLog.duration_ms).label("avg_duration_ms"),
+            )
+            .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+            .group_by(bucket_col)
+            .order_by(bucket_col)
         )
-        .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
-        .group_by(bucket_col)
-        .order_by(bucket_col)
-    )
 
-    return [
-        {
-            "bucket": row.bucket.isoformat(),
-            "total": row.total,
-            "success": row.success,
-            "errors": row.errors,
-            "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
-        }
-        for row in result.all()
-    ]
+        return [
+            {
+                "bucket": row.bucket.isoformat(),
+                "total": row.total,
+                "success": row.success,
+                "errors": row.errors,
+                "avg_duration_ms": round(row.avg_duration_ms or 0, 1),
+            }
+            for row in result.all()
+        ]
+
+    ttl = 30 if hours <= 6 else (60 if hours <= 168 else 300)
+    return await cached_or_compute(f"timeseries:{admin.id}:{hours}", ttl=ttl, compute=_compute)
 
 
 @router.get("/stats/status-breakdown")
@@ -184,30 +197,35 @@ async def stats_status_breakdown(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
-        return []
+    async def _compute():
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        svc_ids = await get_accessible_service_ids(session, admin.id)
+        if not svc_ids:
+            return []
 
-    group_col = case(
-        (RequestLog.status_code < 200, "1xx"),
-        (RequestLog.status_code < 300, "2xx"),
-        (RequestLog.status_code < 400, "3xx"),
-        (RequestLog.status_code < 500, "4xx"),
-        else_="5xx",
-    ).label("status_group")
+        group_col = case(
+            (RequestLog.status_code < 200, "1xx"),
+            (RequestLog.status_code < 300, "2xx"),
+            (RequestLog.status_code < 400, "3xx"),
+            (RequestLog.status_code < 500, "4xx"),
+            else_="5xx",
+        ).label("status_group")
 
-    result = await session.execute(
-        select(group_col, func.count().label("count"))
-        .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
-        .group_by(group_col)
-        .order_by(group_col)
+        result = await session.execute(
+            select(group_col, func.count().label("count"))
+            .where(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+            .group_by(group_col)
+            .order_by(group_col)
+        )
+
+        return [
+            {"group": row.status_group, "count": row.count}
+            for row in result.all()
+        ]
+
+    return await cached_or_compute(
+        f"status-breakdown:{admin.id}:{hours}", ttl=60, compute=_compute
     )
-
-    return [
-        {"group": row.status_group, "count": row.count}
-        for row in result.all()
-    ]
 
 
 @router.get("/stats/cache-savings")
@@ -217,74 +235,80 @@ async def stats_cache_savings(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Estimated time saved by cache hits over the given period."""
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
-        return {"period_hours": hours, "total_saved_ms": 0, "cache_hit_count": 0, "cache_miss_count": 0}
 
-    base = and_(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+    async def _compute():
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        svc_ids = await get_accessible_service_ids(session, admin.id)
+        if not svc_ids:
+            return {"period_hours": hours, "total_saved_ms": 0, "cache_hit_count": 0, "cache_miss_count": 0}
 
-    origin_avg = (
-        select(
-            RequestLog.service_id.label("service_id"),
-            RequestLog.method.label("method"),
-            RequestLog.path.label("path"),
-            func.avg(RequestLog.duration_ms).label("avg_ms"),
+        base = and_(RequestLog.created_at >= since, RequestLog.service_id.in_(svc_ids))
+
+        origin_avg = (
+            select(
+                RequestLog.service_id.label("service_id"),
+                RequestLog.method.label("method"),
+                RequestLog.path.label("path"),
+                func.avg(RequestLog.duration_ms).label("avg_ms"),
+            )
+            .where(base, RequestLog.is_cached == False, RequestLog.status_code < 400)
+            .group_by(RequestLog.service_id, RequestLog.method, RequestLog.path)
+            .subquery()
         )
-        .where(base, RequestLog.is_cached == False, RequestLog.status_code < 400)
-        .group_by(RequestLog.service_id, RequestLog.method, RequestLog.path)
-        .subquery()
-    )
 
-    cache_agg = (
-        select(
-            RequestLog.service_id.label("service_id"),
-            RequestLog.method.label("method"),
-            RequestLog.path.label("path"),
-            func.count().label("cache_count"),
-            func.coalesce(func.sum(RequestLog.duration_ms), 0.0).label("sum_cache_ms"),
+        cache_agg = (
+            select(
+                RequestLog.service_id.label("service_id"),
+                RequestLog.method.label("method"),
+                RequestLog.path.label("path"),
+                func.count().label("cache_count"),
+                func.coalesce(func.sum(RequestLog.duration_ms), 0.0).label("sum_cache_ms"),
+            )
+            .where(base, RequestLog.is_cached == True)
+            .group_by(RequestLog.service_id, RequestLog.method, RequestLog.path)
+            .subquery()
         )
-        .where(base, RequestLog.is_cached == True)
-        .group_by(RequestLog.service_id, RequestLog.method, RequestLog.path)
-        .subquery()
-    )
 
-    saved_expr = func.greatest(
-        cache_agg.c.cache_count * origin_avg.c.avg_ms - cache_agg.c.sum_cache_ms,
-        0.0,
-    )
+        saved_expr = func.greatest(
+            cache_agg.c.cache_count * origin_avg.c.avg_ms - cache_agg.c.sum_cache_ms,
+            0.0,
+        )
 
-    total_saved = await session.scalar(
-        select(func.coalesce(func.sum(saved_expr), 0.0)).select_from(
-            cache_agg.join(
-                origin_avg,
-                and_(
-                    cache_agg.c.service_id == origin_avg.c.service_id,
-                    cache_agg.c.method == origin_avg.c.method,
-                    cache_agg.c.path == origin_avg.c.path,
-                ),
+        total_saved = await session.scalar(
+            select(func.coalesce(func.sum(saved_expr), 0.0)).select_from(
+                cache_agg.join(
+                    origin_avg,
+                    and_(
+                        cache_agg.c.service_id == origin_avg.c.service_id,
+                        cache_agg.c.method == origin_avg.c.method,
+                        cache_agg.c.path == origin_avg.c.path,
+                    ),
+                )
             )
         )
-    )
 
-    cache_hit_count = await session.scalar(
-        select(func.count()).where(base, RequestLog.is_cached == True)
-    )
-    cache_miss_count = await session.scalar(
-        select(func.count()).where(base, RequestLog.is_cached == False)
-    )
+        cache_hit_count = await session.scalar(
+            select(func.count()).where(base, RequestLog.is_cached == True)
+        )
+        cache_miss_count = await session.scalar(
+            select(func.count()).where(base, RequestLog.is_cached == False)
+        )
 
-    return {
-        "period_hours": hours,
-        "total_saved_ms": round(float(total_saved or 0), 1),
-        "cache_hit_count": cache_hit_count or 0,
-        "cache_miss_count": cache_miss_count or 0,
-    }
+        return {
+            "period_hours": hours,
+            "total_saved_ms": round(float(total_saved or 0), 1),
+            "cache_hit_count": cache_hit_count or 0,
+            "cache_miss_count": cache_miss_count or 0,
+        }
+
+    return await cached_or_compute(
+        f"cache-savings:{admin.id}:{hours}", ttl=120, compute=_compute
+    )
 
 
 @router.get("/stats/recent")
 async def stats_recent(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
     service_slug: str | None = Query(default=None),
     method: str | None = Query(default=None),
     status: str | None = Query(default=None),
@@ -294,12 +318,16 @@ async def stats_recent(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_async_session),
 ):
-    svc_ids = await get_accessible_service_ids(session, admin.id)
-    if not svc_ids:
-        return []
+    shared_ids = await get_shared_service_ids(session, admin.id)
+    own_filter = RequestLog.owner_id == admin.id
+    access = (
+        or_(own_filter, RequestLog.service_id.in_(shared_ids))
+        if shared_ids
+        else own_filter
+    )
     stmt = (
         select(RequestLog)
-        .where(RequestLog.service_id.in_(svc_ids))
+        .where(access)
         .order_by(RequestLog.created_at.desc())
         .limit(limit)
     )

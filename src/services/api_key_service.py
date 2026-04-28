@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.api_key import ApiKey
 from src.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
 from src.utils.crypto import generate_api_key, get_key_prefix, hash_api_key
+
+# Throttle last_used_at writes — avoid a row-level UPDATE+COMMIT per proxy request.
+_last_used_writes: dict[uuid.UUID, datetime] = {}
+_LAST_USED_THROTTLE = timedelta(seconds=60)
 
 
 async def list_api_keys(session: AsyncSession, owner_id: uuid.UUID | None = None) -> list[ApiKey]:
@@ -40,11 +44,14 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> ApiKey | None
     api_key = result.scalar_one_or_none()
     if api_key is None:
         return None
-    if api_key.expires_at and api_key.expires_at < datetime.now(UTC):
+    now = datetime.now(UTC)
+    if api_key.expires_at and api_key.expires_at < now:
         return None
-    # Update last_used_at
-    api_key.last_used_at = datetime.now(UTC)
-    await session.commit()
+    last_write = _last_used_writes.get(api_key.id)
+    if last_write is None or (now - last_write) > _LAST_USED_THROTTLE:
+        api_key.last_used_at = now
+        await session.commit()
+        _last_used_writes[api_key.id] = now
     return api_key
 
 

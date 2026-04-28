@@ -8,6 +8,7 @@ from src.api.admin import (
     auth_systems,
     check,
     load_tests,
+    maintenance,
     model_routes,
     playground,
     service_groups,
@@ -34,3 +35,4 @@ router.include_router(auth_systems.router, tags=["admin-auth-systems"])
 router.include_router(verification_channels.router, tags=["admin-verification-channels"])
 router.include_router(model_routes.router, tags=["admin-model-routes"])
 router.include_router(auth_roles.router, tags=["admin-auth-roles"])
+router.include_router(maintenance.router, tags=["admin-maintenance"])

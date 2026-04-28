@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting ProxyML...")
     # Seed admin
     try:
-        from sqlalchemy import select, update
+        from sqlalchemy import func, select, update
 
         from src.db.engine import async_session_factory
         from src.models.admin_user import AdminUser
@@ -66,12 +66,21 @@ async def lifespan(app: FastAPI):
                 if changed:
                     await session.commit()
 
-            # Backfill owner_id for existing records that have no owner
+            # Backfill owner_id for existing records that have no owner.
+            # Skip the UPDATE entirely when no NULL rows exist to avoid a full
+            # table scan on every pod start (especially on request_logs).
             admin_id = admin.id
             for model in [Service, ServiceGroup, ApiKey, RequestLog]:
-                await session.execute(
-                    update(model).where(model.owner_id.is_(None)).values(owner_id=admin_id)
+                has_null = await session.scalar(
+                    select(func.count())
+                    .select_from(model)
+                    .where(model.owner_id.is_(None))
+                    .limit(1)
                 )
+                if has_null:
+                    await session.execute(
+                        update(model).where(model.owner_id.is_(None)).values(owner_id=admin_id)
+                    )
             await session.commit()
     except Exception as e:
         logger.warning(f"Could not seed admin user: {e}")

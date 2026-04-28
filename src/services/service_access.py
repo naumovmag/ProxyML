@@ -24,6 +24,16 @@ async def get_accessible_service_ids(
     return ids
 
 
+async def get_shared_service_ids(
+    session: AsyncSession, user_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """Returns list of service IDs shared with the user (no own services)."""
+    result = await session.execute(
+        select(ServiceShare.service_id).where(ServiceShare.shared_with_user_id == user_id)
+    )
+    return [row[0] for row in result.all()]
+
+
 async def check_service_access(
     session: AsyncSession, service_id: uuid.UUID, user_id: uuid.UUID
 ) -> tuple[Service | None, str]:
