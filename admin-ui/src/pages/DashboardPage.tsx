@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import { fetchServices, Service } from '@/api/services'
 import { fetchApiKeys, ApiKey } from '@/api/apiKeys'
 import { fetchAuthSystems, AuthSystem } from '@/api/authSystems'
-import { fetchStatsOverview, fetchStatsByService, fetchStatsByKey, fetchRecentLogs, fetchTimeseries, fetchStatusBreakdown, fetchCacheSavings, StatsOverview, ServiceStats, KeyStats, RecentLog, LogFilters, TimeseriesPoint, StatusBreakdown, CacheSavings } from '@/api/stats'
+import { fetchStatsOverview, fetchStatsByService, fetchStatsByKey, fetchRecentLogs, fetchTimeseries, fetchStatusBreakdown, StatsOverview, ServiceStats, KeyStats, RecentLog, LogFilters, TimeseriesPoint, StatusBreakdown } from '@/api/stats'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X, Sparkles, Loader2, ShieldCheck, Database } from 'lucide-react'
+import { Server, Key, Zap, BarChart3, Clock, AlertTriangle, ArrowUpDown, X, Sparkles, Loader2, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { RequestsOverTimeChart, LatencyOverTimeChart, StatusCodeDonut, ServiceBarChart, KeyUsageBarChart } from '@/components/charts'
 import { fetchSettings, SystemSettings } from '@/api/settings'
@@ -52,7 +52,6 @@ export default function DashboardPage() {
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([])
   const [filters, setFilters] = useState<LogFilters>({})
   const [logsLimit, setLogsLimit] = useState(50)
-  const [cacheStats, setCacheStats] = useState<CacheSavings | null>(null)
 
   const loadLogs = () => {
     fetchRecentLogs(logsLimit, filters).then((r) => setRecentLogs(r.data)).catch(() => {})
@@ -67,7 +66,6 @@ export default function DashboardPage() {
     fetchStatsByKey(hours).then((r) => setByKey(r.data)).catch(() => {})
     fetchTimeseries(hours).then((r) => setTimeseries(r.data)).catch(() => {})
     fetchStatusBreakdown(hours).then((r) => setStatusBreakdown(r.data)).catch(() => {})
-    fetchCacheSavings(hours).then((r) => setCacheStats(r.data)).catch(() => {})
     loadLogs()
   }
 
@@ -205,39 +203,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Cache Performance */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <Database className="h-4 w-4" /> Cache Performance
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Time Saved</div>
-              <div className="text-3xl font-bold">{cacheStats ? formatDuration(cacheStats.total_saved_ms) : '-'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Cache Hits</div>
-              <div className="text-2xl font-semibold">{cacheStats?.cache_hit_count ?? '-'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Cache Misses</div>
-              <div className="text-2xl font-semibold">{cacheStats?.cache_miss_count ?? '-'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Hit Rate</div>
-              <div className="text-2xl font-semibold">
-                {cacheStats && (cacheStats.cache_hit_count + cacheStats.cache_miss_count) > 0
-                  ? `${((cacheStats.cache_hit_count / (cacheStats.cache_hit_count + cacheStats.cache_miss_count)) * 100).toFixed(1)}%`
-                  : '-'}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Infrastructure */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
