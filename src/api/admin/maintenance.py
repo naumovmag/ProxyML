@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_superadmin
+from src.db.engine import engine
 from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.models.load_test import LoadTestResult
@@ -54,6 +55,21 @@ async def _delete_chunked(session: AsyncSession, model, cutoff: datetime) -> int
         if affected < CHUNK_SIZE:
             break
     return total_deleted
+
+
+@router.get("/maintenance/pool-stats")
+async def maintenance_pool_stats(
+    _admin: AdminUser = Depends(get_current_superadmin),
+):
+    """Live SQLAlchemy connection-pool snapshot for capacity diagnostics."""
+    pool = engine.pool
+    return {
+        "size": pool.size(),
+        "checked_in": pool.checkedin(),
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+        "configured_pool_size": engine.pool._pool.maxsize if hasattr(engine.pool, "_pool") else None,
+    }
 
 
 @router.get("/maintenance/cleanup-preview")

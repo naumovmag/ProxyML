@@ -341,38 +341,28 @@ async def load_test_stats(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Load test task not found")
 
-    result = await session.execute(
-        select(
-            sa_func.count(LoadTestResult.id).label("total"),
-            sa_func.avg(LoadTestResult.duration_ms).label("avg_duration_ms"),
-            sa_func.min(LoadTestResult.duration_ms).label("min_duration_ms"),
-            sa_func.max(LoadTestResult.duration_ms).label("max_duration_ms"),
-            sa_func.count(LoadTestResult.id).filter(LoadTestResult.error.isnot(None)).label("error_count"),
-        ).where(LoadTestResult.task_id == task_id)
-    )
-    row = result.one()
+    p95_expr = sa_func.percentile_cont(0.95).within_group(LoadTestResult.duration_ms).label("p95")
+    row = (
+        await session.execute(
+            select(
+                sa_func.count(LoadTestResult.id).label("total"),
+                sa_func.avg(LoadTestResult.duration_ms).label("avg_duration_ms"),
+                sa_func.min(LoadTestResult.duration_ms).label("min_duration_ms"),
+                sa_func.max(LoadTestResult.duration_ms).label("max_duration_ms"),
+                sa_func.count(LoadTestResult.id).filter(LoadTestResult.error.isnot(None)).label("error_count"),
+                p95_expr,
+            ).where(LoadTestResult.task_id == task_id)
+        )
+    ).one()
     total = row.total or 0
     error_count = row.error_count or 0
-
-    # p95
-    p95 = None
-    if total > 0:
-        p95_result = await session.execute(
-            select(LoadTestResult.duration_ms)
-            .where(LoadTestResult.task_id == task_id)
-            .order_by(LoadTestResult.duration_ms)
-            .offset(int(total * 0.95))
-            .limit(1)
-        )
-        p95_row = p95_result.scalar_one_or_none()
-        p95 = round(p95_row, 1) if p95_row is not None else None
 
     return LoadTestStatsRead(
         total=total,
         avg_duration_ms=round(row.avg_duration_ms, 1) if row.avg_duration_ms is not None else None,
         min_duration_ms=round(row.min_duration_ms, 1) if row.min_duration_ms is not None else None,
         max_duration_ms=round(row.max_duration_ms, 1) if row.max_duration_ms is not None else None,
-        p95_duration_ms=p95,
+        p95_duration_ms=round(row.p95, 1) if row.p95 is not None else None,
         error_count=error_count,
         error_rate=round(error_count / total * 100, 1) if total > 0 else None,
     )

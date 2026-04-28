@@ -70,11 +70,18 @@ class LoadTestScheduler:
 
     async def _execute_one_run(self, task_id: uuid.UUID):
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(LoadTestTask).where(LoadTestTask.id == task_id)
-            )
-            task = result.scalar_one_or_none()
-            if not task or task.status != "running":
+            row = (
+                await session.execute(
+                    select(LoadTestTask, Service)
+                    .join(Service, Service.id == LoadTestTask.service_id, isouter=True)
+                    .where(LoadTestTask.id == task_id)
+                )
+            ).first()
+            if not row:
+                self.stop_task(task_id)
+                return
+            task, service = row
+            if task.status != "running":
                 self.stop_task(task_id)
                 return
 
@@ -84,10 +91,6 @@ class LoadTestScheduler:
                 self.stop_task(task_id)
                 return
 
-            result = await session.execute(
-                select(Service).where(Service.id == task.service_id)
-            )
-            service = result.scalar_one_or_none()
             if not service:
                 logger.warning(f"Service {task.service_id} not found for load test {task_id}")
                 task.status = "stopped"

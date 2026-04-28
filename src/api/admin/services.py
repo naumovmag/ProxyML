@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from src.api.deps import get_current_admin
 from src.db.session import get_async_session
@@ -178,28 +179,28 @@ async def list_service_shares(
     svc = await get_service_by_id(session, service_id)
     if not svc or svc.owner_id != admin.id:
         raise HTTPException(status_code=404, detail="Service not found")
+    SharedWith = aliased(AdminUser)
+    SharedBy = aliased(AdminUser)
     result = await session.execute(
-        select(ServiceShare, AdminUser)
-        .join(AdminUser, AdminUser.id == ServiceShare.shared_with_user_id)
+        select(ServiceShare, SharedWith, SharedBy.username)
+        .join(SharedWith, SharedWith.id == ServiceShare.shared_with_user_id)
+        .join(SharedBy, SharedBy.id == ServiceShare.shared_by_user_id, isouter=True)
         .where(ServiceShare.service_id == service_id)
         .order_by(ServiceShare.created_at)
     )
-    items = []
-    for share, user in result.all():
-        # Get shared_by username
-        by_result = await session.execute(select(AdminUser.username).where(AdminUser.id == share.shared_by_user_id))
-        by_username = by_result.scalar_one_or_none() or "unknown"
-        items.append(ServiceShareRead(
+    return [
+        ServiceShareRead(
             id=share.id,
             service_id=share.service_id,
             shared_with_user_id=share.shared_with_user_id,
             shared_with_username=user.username,
             shared_with_display_name=user.display_name,
             shared_by_user_id=share.shared_by_user_id,
-            shared_by_username=by_username,
+            shared_by_username=by_username or "unknown",
             created_at=share.created_at,
-        ))
-    return items
+        )
+        for share, user, by_username in result.all()
+    ]
 
 
 @router.delete("/services/{service_id}/shares/{user_id}", status_code=204)

@@ -60,16 +60,21 @@ export default function ApiKeysPage() {
   const [formExpires, setFormExpires] = useState('')
 
   const load = async () => {
-    const [keysRes, servicesRes, statsRes] = await Promise.all([
-      fetchApiKeys(), fetchServices(), fetchStatsByKey(720),
-    ])
+    // Render keys + services immediately; stats can be heavy on big request_logs,
+    // so let it resolve afterwards without blocking the initial paint.
+    const [keysRes, servicesRes] = await Promise.all([fetchApiKeys(), fetchServices()])
     setKeys(keysRes.data)
     setServices(servicesRes.data)
-    const map: Record<string, KeyStats> = {}
-    for (const s of statsRes.data) {
-      if (s.api_key_id) map[s.api_key_id] = s
-    }
-    setKeyStatsMap(map)
+
+    fetchStatsByKey(168)
+      .then((statsRes) => {
+        const map: Record<string, KeyStats> = {}
+        for (const s of statsRes.data) {
+          if (s.api_key_id) map[s.api_key_id] = s
+        }
+        setKeyStatsMap(map)
+      })
+      .catch(() => {})
   }
   useEffect(() => { load() }, [])
 
