@@ -7,6 +7,17 @@ from src.models.request_log import RequestLog
 
 logger = logging.getLogger(__name__)
 
+_pending_tasks: set[asyncio.Task] = set()
+
+
+def _on_task_done(task: asyncio.Task) -> None:
+    _pending_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("request log task failed: %s", exc)
+
 
 def log_request_fire_and_forget(
     *,
@@ -28,7 +39,7 @@ def log_request_fire_and_forget(
     owner_id: uuid.UUID | None = None,
 ) -> None:
     """Fire-and-forget: schedule DB write without awaiting it in the request path."""
-    asyncio.get_running_loop().create_task(
+    task = asyncio.get_running_loop().create_task(
         _write_log(
             service_id=service_id,
             service_slug=service_slug,
@@ -48,12 +59,20 @@ def log_request_fire_and_forget(
             owner_id=owner_id,
         )
     )
+    _pending_tasks.add(task)
+    task.add_done_callback(_on_task_done)
 
 
 async def _write_log(**kwargs) -> None:
+    session = async_session_factory()
     try:
-        async with async_session_factory() as session:
-            session.add(RequestLog(**kwargs))
-            await session.commit()
+        session.add(RequestLog(**kwargs))
+        await asyncio.wait_for(session.commit(), timeout=10.0)
     except Exception as e:
-        logger.warning(f"Failed to write request log: {e}")
+        logger.warning("Failed to write request log: %s", e)
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+    finally:
+        await session.close()

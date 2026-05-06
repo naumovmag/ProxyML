@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.db.engine import async_session_factory
 from src.models.api_key import ApiKey
 from src.models.model_route import ModelRoute
 from src.models.service import Service
@@ -27,11 +28,10 @@ class UnifiedLLMHandler(AbstractProxyHandler):
         is_fallback: bool = False,
         fallback_from_slug: str | None = None,
     ) -> Response:
-        session: AsyncSession = request.state.db_session
-
         # Special case: /v1/models — aggregate models from all target services
         if path.rstrip("/") == "v1/models":
-            return await self._handle_models(session, service)
+            async with async_session_factory() as session:
+                return await self._handle_models(session, service)
 
         # Parse body to extract "model" field
         body = await request.body()
@@ -43,22 +43,24 @@ class UnifiedLLMHandler(AbstractProxyHandler):
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
-        # Resolve target service via model_routes
-        target_service, override_model = await self._resolve_target(
-            session, service.id, model_name
-        )
-        if target_service is None:
-            available = await self._get_available_models(session, service.id)
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "message": f"Model '{model_name}' not found in unified service '{service.slug}'. Available models: {available}",
-                        "type": "invalid_request_error",
-                        "code": "model_not_found",
-                    }
-                },
+        # Resolve target service via model_routes — short-lived session,
+        # released before the (slow) downstream proxy call.
+        async with async_session_factory() as session:
+            target_service, override_model = await self._resolve_target(
+                session, service.id, model_name
             )
+            if target_service is None:
+                available = await self._get_available_models(session, service.id)
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "message": f"Model '{model_name}' not found in unified service '{service.slug}'. Available models: {available}",
+                            "type": "invalid_request_error",
+                            "code": "model_not_found",
+                        }
+                    },
+                )
 
         # If override_model is set, patch the body
         if override_model and body and model_name:

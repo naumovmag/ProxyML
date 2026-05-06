@@ -42,8 +42,15 @@ async def proxy_request(
         if share_result.scalar_one_or_none() is None:
             raise HTTPException(status_code=403, detail="API key does not have access to this service")
 
-    # Pass DB session to handler via request.state (used by UnifiedLLMHandler)
-    request.state.db_session = session
+    # Pre-fetch fallback service so we can release the DB session before the slow proxy call.
+    fallback_service = None
+    if service.fallback_service_id:
+        fallback_service = await get_service_by_id(session, service.fallback_service_id)
+
+    # Release the DB session BEFORE the (potentially slow) backend call.
+    # Otherwise the session stays "idle in transaction" for the entire LLM response time
+    # (8-30s for chat completions), which exhausts the connection pool under load.
+    await session.close()
 
     handler = registry.get(service.service_type)
     if handler is None:
@@ -60,17 +67,14 @@ async def proxy_request(
     except Exception:
         need_fallback = True
 
-    # Fallback to another service on failure
-    if need_fallback and service.fallback_service_id:
-        fallback_service = await get_service_by_id(session, service.fallback_service_id)
-        if fallback_service and fallback_service.is_active:
-            logger.info(f"Fallback: {service.slug} -> {fallback_service.slug}")
-            fallback_handler = registry.get(fallback_service.service_type)
-            if fallback_handler:
-                return await fallback_handler.handle(
-                    request, fallback_service, path, api_key=api_key,
-                    is_fallback=True, fallback_from_slug=service.slug,
-                )
+    if need_fallback and fallback_service and fallback_service.is_active:
+        logger.info(f"Fallback: {service.slug} -> {fallback_service.slug}")
+        fallback_handler = registry.get(fallback_service.service_type)
+        if fallback_handler:
+            return await fallback_handler.handle(
+                request, fallback_service, path, api_key=api_key,
+                is_fallback=True, fallback_from_slug=service.slug,
+            )
 
     if response is None:
         raise HTTPException(status_code=502, detail="Service unavailable and no fallback configured")

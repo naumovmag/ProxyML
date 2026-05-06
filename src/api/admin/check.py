@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_admin
+from src.db.engine import async_session_factory
 from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.schemas.health import HealthReportItem, HealthReportResponse, ServiceHealthCheck
@@ -49,7 +50,8 @@ async def check_all_services(
                 status="unknown",
                 detail="Service is inactive",
             )
-        result = await check_service_health(svc, session=session)
+        async with async_session_factory() as own_session:
+            result = await check_service_health(svc, session=own_session)
         return HealthReportItem(
             service_id=str(svc.id),
             service_name=svc.name,
