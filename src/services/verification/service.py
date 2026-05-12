@@ -18,6 +18,17 @@ from src.services.verification.registry import get_verification_provider
 
 logger = logging.getLogger(__name__)
 
+_pending_tasks: set[asyncio.Task] = set()
+
+
+def _on_task_done(task: asyncio.Task) -> None:
+    _pending_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("send_verification_bg task failed: %s", exc)
+
 DEFAULT_EMAIL_SUBJECT = "Verify your email for {{system_name}}"
 DEFAULT_EMAIL_BODY = """
 <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -196,9 +207,11 @@ def _build_message(
 
 
 def send_verification(channel: VerificationChannel, user: AuthUser, system_name: str, system_slug: str) -> None:
-    asyncio.get_running_loop().create_task(
+    task = asyncio.get_running_loop().create_task(
         _send_verification_bg(str(channel.id), str(user.id), system_name, system_slug)
     )
+    _pending_tasks.add(task)
+    task.add_done_callback(_on_task_done)
 
 
 async def send_all_verifications(session: AsyncSession, auth_system_id: UUID, user: AuthUser, system_name: str, system_slug: str) -> None:

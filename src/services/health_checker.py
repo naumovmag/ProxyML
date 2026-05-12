@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.service import Service
+from src.proxy.aux_client import get_aux_http_client
 
 
 async def check_service_health(service: Service, session: AsyncSession | None = None) -> dict:
@@ -34,16 +35,19 @@ async def check_service_health(service: Service, session: AsyncSession | None = 
         url += f"{sep}api_key={service.auth_token}"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
-            resp = await client.request(service.health_check_method, url, headers=headers)
-            elapsed = (time.monotonic() - start) * 1000
+        client = await get_aux_http_client()
+        resp = await client.request(
+            service.health_check_method, url, headers=headers,
+            timeout=10.0,
+        )
+        elapsed = (time.monotonic() - start) * 1000
 
-            if resp.status_code == 200:
-                return {"status": "ok", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
-            elif resp.status_code < 400 or resp.status_code in (405, 422):
-                return {"status": "warning", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
-            else:
-                return {"status": "error", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
+        if resp.status_code == 200:
+            return {"status": "ok", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
+        elif resp.status_code < 400 or resp.status_code in (405, 422):
+            return {"status": "warning", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
+        else:
+            return {"status": "error", "detail": f"HTTP {resp.status_code}", "response_time_ms": round(elapsed, 1)}
     except httpx.ConnectError:
         elapsed = (time.monotonic() - start) * 1000
         return {"status": "error", "detail": "Connection refused", "response_time_ms": round(elapsed, 1)}

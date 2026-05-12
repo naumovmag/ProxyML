@@ -17,6 +17,17 @@ from src.services.email.registry import get_email_provider
 
 logger = logging.getLogger(__name__)
 
+_pending_tasks: set[asyncio.Task] = set()
+
+
+def _on_task_done(task: asyncio.Task) -> None:
+    _pending_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("send_verification_email_bg task failed: %s", exc)
+
 DEFAULT_SUBJECT = "Verify your email for {{system_name}}"
 DEFAULT_BODY = """
 <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -98,9 +109,11 @@ async def _send_verification_bg(system_id: str, user_id: str) -> None:
 
 def send_verification_email(system: AuthSystem, user: AuthUser) -> None:
     """Fire-and-forget: schedule verification email in background."""
-    asyncio.get_running_loop().create_task(
+    task = asyncio.get_running_loop().create_task(
         _send_verification_bg(str(system.id), str(user.id))
     )
+    _pending_tasks.add(task)
+    task.add_done_callback(_on_task_done)
 
 
 async def verify_email_token(session: AsyncSession, token_str: str) -> AuthUser | None:

@@ -15,6 +15,7 @@ from src.api.v1.telegram_webhook import router as telegram_webhook_router
 from src.cache.redis_client import close_redis
 from src.config import settings
 from src.middleware.logging import LoggingMiddleware
+from src.proxy.aux_client import close_aux_http_client
 from src.proxy.client import close_http_client
 from src.utils.logging import setup_logging
 
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting ProxyML...")
     # Seed admin
     try:
-        from sqlalchemy import func, select, update
+        from sqlalchemy import exists, select, update
 
         from src.db.engine import async_session_factory
         from src.models.admin_user import AdminUser
@@ -72,10 +73,9 @@ async def lifespan(app: FastAPI):
             admin_id = admin.id
             for model in [Service, ServiceGroup, ApiKey, RequestLog]:
                 has_null = await session.scalar(
-                    select(func.count())
-                    .select_from(model)
-                    .where(model.owner_id.is_(None))
-                    .limit(1)
+                    select(exists(
+                        select(model.id).where(model.owner_id.is_(None)).limit(1)
+                    ))
                 )
                 if has_null:
                     await session.execute(
@@ -121,6 +121,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Could not stop Telegram polling: %s", _e)
 
     await close_http_client()
+    await close_aux_http_client()
     await close_redis()
     logger.info("ProxyML stopped.")
 

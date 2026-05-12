@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import time
@@ -133,6 +134,8 @@ class GenericProxyHandler(AbstractProxyHandler):
                             streamed_bytes += len(chunk)
                             yield chunk
                     finally:
+                        with contextlib.suppress(Exception):
+                            await response.aclose()
                         duration_ms = (time.monotonic() - start) * 1000
                         log_request_fire_and_forget(
                             service_id=service.id,
@@ -148,6 +151,7 @@ class GenericProxyHandler(AbstractProxyHandler):
                             is_streaming=True,
                             is_fallback=is_fallback,
                             fallback_from_slug=fallback_from_slug,
+                            owner_id=service.owner_id,
                         )
 
                 return StreamingResponse(

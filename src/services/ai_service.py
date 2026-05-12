@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.system_settings import SystemSettings
+from src.proxy.aux_client import get_aux_http_client
 from src.services.service_registry import get_service_by_slug
 
 logger = logging.getLogger(__name__)
@@ -61,14 +62,14 @@ async def call_llm(
     }
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=body, headers=headers, timeout=60.0)
-            resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            if content is None:
-                raise AICallError("LLM returned empty content")
-            return content
+        client = await get_aux_http_client()
+        resp = await client.post(url, json=body, headers=headers, timeout=60.0)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        if content is None:
+            raise AICallError("LLM returned empty content")
+        return content
     except httpx.HTTPStatusError as e:
         logger.error(f"LLM call failed: {e.response.status_code} {e.response.text[:500]}")
         raise AICallError(f"LLM returned {e.response.status_code}") from e
