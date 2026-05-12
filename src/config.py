@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     server_base_url: str | None = None  # e.g. https://proxy-ml.example.com
     graylog_host: str | None = None
     graylog_port: int = 12201
-    app_env: str = "production"
+    graylog_app_env: str = "production"
+    graylog_source: str = "proxyml"
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.db_username}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_database}"

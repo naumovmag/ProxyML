@@ -23,7 +23,7 @@ def setup_logging():
             gelf = graypy.GELFTCPHandler(
                 host=settings.graylog_host,
                 port=settings.graylog_port,
-                localname=f"{settings.app_env}_proxyml",
+                localname=f"{settings.graylog_app_env}_{settings.graylog_source}",
             )
             root.addHandler(gelf)
             logging.getLogger(__name__).info(
