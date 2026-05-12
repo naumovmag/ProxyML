@@ -12,7 +12,6 @@ Usage:
 """
 import argparse
 import base64
-import os
 import re
 import shutil
 import subprocess
@@ -23,7 +22,7 @@ from pathlib import Path
 import httpx
 
 PROXY_URL = "https://proxy-ml.adata.kz/proxy/gemma-4-e4b-it/v1/chat/completions"
-API_KEY = os.environ.get("PROXYML_API_KEY", "")
+API_KEY = "pml_bl6jmgnDFuzcEK0Qw5voF3pvI8oJ1yPxgSUy-S5AocE"
 
 DEFAULT_PROMPT = (
     "Transcribe the following audio verbatim. "
