@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart",
     "aiosmtplib",
     "redis>=5.0",
+    "graypy>=2.1.0",
 ]
 
 [project.optional-dependencies]

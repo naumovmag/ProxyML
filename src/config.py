@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     redis_db: int = 0
     cache_ttl_seconds: int = 86400  # 24h
     server_base_url: str | None = None  # e.g. https://proxy-ml.example.com
+    graylog_host: str | None = None
+    graylog_port: int = 12201
+    app_env: str = "production"
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.db_username}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_database}"
