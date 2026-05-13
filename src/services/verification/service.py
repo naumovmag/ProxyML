@@ -121,8 +121,8 @@ async def _send_verification_bg(channel_id: str, user_id: str, system_name: str,
             await provider.send(msg)
             logger.info(f"Verification sent via {channel.channel_type}/{channel.provider_type} to {recipient}")
 
-    except Exception as e:
-        logger.error(f"Failed to send verification (channel={channel_id}): {e}")
+    except Exception:
+        logger.exception("Failed to send verification (channel=%s)", channel_id)
 
 
 def _get_recipient(channel: VerificationChannel, user: AuthUser) -> str | None:

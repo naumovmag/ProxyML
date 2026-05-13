@@ -53,8 +53,8 @@ class LoadTestScheduler:
                 await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             pass
-        except Exception as e:
-            logger.error(f"Load test loop error for {task_id}: {e}")
+        except Exception:
+            logger.exception("Load test loop error for %s", task_id)
             try:
                 async with async_session_factory() as session:
                     result = await session.execute(
@@ -65,7 +65,7 @@ class LoadTestScheduler:
                         task.status = "stopped"
                         await session.commit()
             except Exception:
-                pass
+                logger.exception("Failed to mark load test task %s as stopped", task_id)
             self._tasks.pop(task_id, None)
 
     async def _execute_one_run(self, task_id: uuid.UUID):

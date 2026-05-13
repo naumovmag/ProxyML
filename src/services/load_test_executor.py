@@ -154,7 +154,7 @@ async def execute_single_test(task, service, session: AsyncSession | None = None
         )
     except Exception as e:
         duration_ms = round((time.monotonic() - start) * 1000, 1)
-        logger.error(f"Load test error for task {task.id}: {e}")
+        logger.exception("Load test error for task %s", task.id)
         return LoadTestResult(
             task_id=task.id,
             owner_id=task.owner_id,

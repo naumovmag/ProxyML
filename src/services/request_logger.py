@@ -68,11 +68,11 @@ async def _write_log(**kwargs) -> None:
     try:
         session.add(RequestLog(**kwargs))
         await asyncio.wait_for(session.commit(), timeout=10.0)
-    except Exception as e:
-        logger.warning("Failed to write request log: %s", e)
+    except Exception:
+        logger.exception("Failed to write request log")
         try:
             await session.rollback()
         except Exception:
-            pass
+            logger.exception("Request log rollback failed")
     finally:
         await session.close()

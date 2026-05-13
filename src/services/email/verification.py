@@ -103,8 +103,8 @@ async def _send_verification_bg(system_id: str, user_id: str) -> None:
                 from_name=system.email_from_name,
             ))
             logger.info(f"Verification email sent to {user.email} for system {system.slug}")
-    except Exception as e:
-        logger.error(f"Failed to send verification email: {e}")
+    except Exception:
+        logger.exception("Failed to send verification email")
 
 
 def send_verification_email(system: AuthSystem, user: AuthUser) -> None:

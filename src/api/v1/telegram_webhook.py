@@ -76,7 +76,7 @@ async def telegram_webhook(
                 system_name="",
                 template="Account linked successfully! You will receive verification codes here.",
             ))
-    except Exception as e:
-        logger.error(f"Telegram webhook error: {e}")
+    except Exception:
+        logger.exception("Telegram webhook error")
 
     return JSONResponse({"ok": True})

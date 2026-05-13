@@ -215,6 +215,10 @@ class GenericProxyHandler(AbstractProxyHandler):
                 )
         except Exception as e:
             duration_ms = (time.monotonic() - start) * 1000
+            logger.exception(
+                "Proxy call failed: %s %s (service=%s)",
+                request.method, target_url, service.slug,
+            )
             log_request_fire_and_forget(
                 service_id=service.id,
                 service_slug=service.slug,

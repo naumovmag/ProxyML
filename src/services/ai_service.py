@@ -71,10 +71,13 @@ async def call_llm(
             raise AICallError("LLM returned empty content")
         return content
     except httpx.HTTPStatusError as e:
-        logger.error(f"LLM call failed: {e.response.status_code} {e.response.text[:500]}")
+        logger.exception(
+            "LLM call failed: %s %s",
+            e.response.status_code, e.response.text[:500],
+        )
         raise AICallError(f"LLM returned {e.response.status_code}") from e
     except Exception as e:
-        logger.error(f"LLM call error: {e}")
+        logger.exception("LLM call error")
         raise AICallError(f"Failed to call LLM: {e!s}") from e
 
 

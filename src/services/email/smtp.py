@@ -46,7 +46,7 @@ class SMTPEmailProvider(BaseEmailProvider):
                 start_tls=self.use_tls,
             )
         except Exception as e:
-            logger.error(f"SMTP send error: {e}")
+            logger.exception("SMTP send error")
             raise EmailSendError(f"SMTP error: {e}") from e
 
     async def validate_config(self) -> bool:
