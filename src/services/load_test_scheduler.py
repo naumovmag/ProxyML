@@ -53,8 +53,8 @@ class LoadTestScheduler:
                 await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             pass
-        except Exception:
-            logger.exception("Load test loop error for %s", task_id)
+        except Exception as e:
+            logger.exception("Load test loop error for %s: %r", task_id, e)
             try:
                 async with async_session_factory() as session:
                     result = await session.execute(

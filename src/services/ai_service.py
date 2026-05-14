@@ -77,7 +77,7 @@ async def call_llm(
         )
         raise AICallError(f"LLM returned {e.response.status_code}") from e
     except Exception as e:
-        logger.exception("LLM call error")
+        logger.exception("LLM call error: %r", e)
         raise AICallError(f"Failed to call LLM: {e!s}") from e
 
 

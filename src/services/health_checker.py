@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import httpx
@@ -8,7 +9,11 @@ from src.models.service import Service
 from src.proxy.aux_client import get_aux_http_client
 
 
-async def check_service_health(service: Service, session: AsyncSession | None = None) -> dict:
+async def check_service_health(
+    service: Service,
+    session: AsyncSession | None = None,
+    timeout: float = 10.0,
+) -> dict:
     # For unified_llm: check all target services
     if service.service_type == "unified_llm":
         return await _check_unified_health(service, session)
@@ -38,7 +43,7 @@ async def check_service_health(service: Service, session: AsyncSession | None = 
         client = await get_aux_http_client()
         resp = await client.request(
             service.health_check_method, url, headers=headers,
-            timeout=10.0,
+            timeout=timeout,
         )
         elapsed = (time.monotonic() - start) * 1000
 
@@ -75,14 +80,38 @@ async def _check_unified_health(service: Service, session: AsyncSession | None) 
     if not target_ids:
         return {"status": "warning", "detail": "No model routes configured"}
 
+    # Load all target services in one query, then check them in parallel.
+    rows = await session.execute(
+        select(Service).where(Service.id.in_(target_ids), Service.is_active.is_(True))
+    )
+    targets = list(rows.scalars().all())
+    if not targets:
+        return {"status": "warning", "detail": "No active target services"}
+
     start = time.monotonic()
-    results = []
-    for tid in target_ids:
-        target = await session.get(Service, tid)
-        if not target or not target.is_active:
-            continue
-        r = await check_service_health(target)
-        results.append((target.slug, r))
+    per_node_timeout = 5.0
+    # Wall-clock cap so a slow batch can't block the whole report.
+    overall_timeout = per_node_timeout + 2.0
+
+    async def _check_one(t: Service) -> tuple[str, dict]:
+        try:
+            r = await check_service_health(t, timeout=per_node_timeout)
+        except Exception as e:  # safety net — check_service_health already catches httpx errors
+            r = {"status": "error", "detail": f"{type(e).__name__}: {e}"}
+        return t.slug, r
+
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*[_check_one(t) for t in targets]),
+            timeout=overall_timeout,
+        )
+    except asyncio.TimeoutError:
+        elapsed = (time.monotonic() - start) * 1000
+        return {
+            "status": "error",
+            "detail": f"Unified health check exceeded {overall_timeout:.0f}s",
+            "response_time_ms": round(elapsed, 1),
+        }
 
     elapsed = (time.monotonic() - start) * 1000
 

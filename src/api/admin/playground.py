@@ -122,7 +122,7 @@ async def playground_quick_test(
     except httpx.ConnectError as e:
         raise HTTPException(status_code=502, detail=f"Connection failed: {e!s}") from e
     except Exception as e:
-        logger.exception("Quick test error")
+        logger.exception("Quick test error: %r", e)
         raise HTTPException(status_code=502, detail=f"Request error: {e!s}") from e
 
 
@@ -234,7 +234,7 @@ async def playground_execute(
     except httpx.ConnectError as e:
         raise HTTPException(status_code=502, detail=f"Connection failed: {e!s}") from e
     except Exception as e:
-        logger.exception("Playground error")
+        logger.exception("Playground error: %r", e)
         raise HTTPException(status_code=502, detail=f"Proxy error: {e!s}") from e
 
 
@@ -298,7 +298,7 @@ async def playground_upload(
         duration_ms = round((time.monotonic() - start) * 1000, 1)
         raise HTTPException(status_code=504, detail=f"Backend timeout after {duration_ms}ms") from e
     except Exception as e:
-        logger.exception("Playground upload error")
+        logger.exception("Playground upload error: %r", e)
         raise HTTPException(status_code=502, detail=f"Proxy error: {e!s}") from e
 
 
