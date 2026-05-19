@@ -64,15 +64,9 @@ def log_request_fire_and_forget(
 
 
 async def _write_log(**kwargs) -> None:
-    session = async_session_factory()
     try:
-        session.add(RequestLog(**kwargs))
-        await asyncio.wait_for(session.commit(), timeout=10.0)
+        async with async_session_factory() as session:
+            session.add(RequestLog(**kwargs))
+            await asyncio.wait_for(session.commit(), timeout=10.0)
     except Exception as e:
         logger.exception("Failed to write request log: %r", e)
-        try:
-            await session.rollback()
-        except Exception as rb:
-            logger.exception("Request log rollback failed: %r", rb)
-    finally:
-        await session.close()

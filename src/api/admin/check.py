@@ -1,11 +1,9 @@
-import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_admin
-from src.db.engine import async_session_factory
 from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.schemas.health import HealthReportItem, HealthReportResponse, ServiceHealthCheck
@@ -40,28 +38,27 @@ async def check_all_services(
     items_data = await list_accessible_services(session, admin.id)
     services = [item["service"] for item in items_data]
 
-    async def check_one(svc):
+    items: list[HealthReportItem] = []
+    for svc in services:
         if not svc.is_active:
-            return HealthReportItem(
+            items.append(HealthReportItem(
                 service_id=str(svc.id),
                 service_name=svc.name,
                 slug=svc.slug,
                 is_active=False,
                 status="unknown",
                 detail="Service is inactive",
-            )
-        async with async_session_factory() as own_session:
-            result = await check_service_health(svc, session=own_session)
-        return HealthReportItem(
+            ))
+            continue
+        result = await check_service_health(svc, session=session)
+        items.append(HealthReportItem(
             service_id=str(svc.id),
             service_name=svc.name,
             slug=svc.slug,
             is_active=svc.is_active,
             **result,
-        )
+        ))
 
-    items = await asyncio.gather(*[check_one(s) for s in services])
-    items = list(items)
     total = len(items)
     healthy = sum(1 for i in items if i.status == "ok")
     warning = sum(1 for i in items if i.status == "warning")
