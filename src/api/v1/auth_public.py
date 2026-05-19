@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -628,22 +629,55 @@ async def auth_telegram_link(
     return TelegramLinkResponse(deep_link=deep_link, expires_in=600)
 
 
+# In-memory TTL cache for /verify responses. Keyed by sha256(slug:token).
+# Eliminates DB pressure when external clients poll /verify every second
+# with the same access token. Cache is per-process; resets on app restart.
+# TTL is short on purpose: a revoked/expired token is rejected within
+# _VERIFY_CACHE_TTL seconds at worst.
+_VERIFY_CACHE: dict[str, tuple[float, "AuthVerifyResponse"]] = {}
+_VERIFY_CACHE_TTL = 30.0
+_VERIFY_CACHE_MAX_SIZE = 10_000
+
+
+def _verify_cache_key(slug: str, token: str) -> str:
+    return hashlib.sha256(f"{slug}:{token}".encode()).hexdigest()
+
+
+def _verify_cache_gc(now: float) -> None:
+    if len(_VERIFY_CACHE) <= _VERIFY_CACHE_MAX_SIZE:
+        return
+    # Drop expired first; if still over budget, drop oldest by expiry.
+    expired = [k for k, (exp, _) in _VERIFY_CACHE.items() if exp <= now]
+    for k in expired:
+        _VERIFY_CACHE.pop(k, None)
+    if len(_VERIFY_CACHE) > _VERIFY_CACHE_MAX_SIZE:
+        for k, _ in sorted(_VERIFY_CACHE.items(), key=lambda kv: kv[1][0])[: len(_VERIFY_CACHE) - _VERIFY_CACHE_MAX_SIZE]:
+            _VERIFY_CACHE.pop(k, None)
+
+
 @router.get("/{slug}/verify", response_model=AuthVerifyResponse)
 async def auth_verify(
     slug: str,
     authorization: str = Header(...),
     session: AsyncSession = Depends(get_async_session),
-
 ):
-    system = await _get_system(session, slug)
-
     token = authorization
     if token.lower().startswith("bearer "):
         token = token[7:].strip()
 
+    now = time.monotonic()
+    cache_key = _verify_cache_key(slug, token)
+    cached = _VERIFY_CACHE.get(cache_key)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    system = await _get_system(session, slug)
     payload = _decode_access_token(system, token)
     if not payload:
-        return AuthVerifyResponse(valid=False)
+        response = AuthVerifyResponse(valid=False)
+        _VERIFY_CACHE[cache_key] = (now + _VERIFY_CACHE_TTL, response)
+        _verify_cache_gc(now)
+        return response
 
     user_result = await session.execute(select(AuthUser).where(AuthUser.id == uuid.UUID(payload["sub"])))
     user = user_result.scalar_one_or_none()
@@ -655,7 +689,7 @@ async def auth_verify(
         role_slugs = [r.slug for r in user_roles] or None
         perm_slugs = await get_user_permissions(session, user.id) or None
 
-    return AuthVerifyResponse(
+    response = AuthVerifyResponse(
         valid=True,
         user_id=payload["sub"],
         email=payload.get("email"),
@@ -665,6 +699,9 @@ async def auth_verify(
         roles=role_slugs,
         permissions=perm_slugs,
     )
+    _VERIFY_CACHE[cache_key] = (now + _VERIFY_CACHE_TTL, response)
+    _verify_cache_gc(now)
+    return response
 
 
 async def _get_admin_user_or_401(
