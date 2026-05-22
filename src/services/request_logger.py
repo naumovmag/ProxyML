@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 
-from src.db.engine import async_session_factory
+from src.db.engine import background_session_factory
 from src.models.request_log import RequestLog
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def log_request_fire_and_forget(
 
 async def _write_log(**kwargs) -> None:
     try:
-        async with async_session_factory() as session:
+        async with background_session_factory() as session:
             session.add(RequestLog(**kwargs))
             await asyncio.wait_for(session.commit(), timeout=10.0)
     except Exception as e:

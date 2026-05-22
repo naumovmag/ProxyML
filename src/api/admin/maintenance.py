@@ -6,7 +6,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_superadmin
-from src.db.engine import engine
+from src.db.engine import background_session_factory, engine
 from src.db.session import get_async_session
 from src.models.admin_user import AdminUser
 from src.models.load_test import LoadTestResult
@@ -93,13 +93,15 @@ async def maintenance_preview(
 async def maintenance_cleanup(
     data: CleanupRequest,
     _admin: AdminUser = Depends(get_current_superadmin),
-    session: AsyncSession = Depends(get_async_session),
 ):
+    # Use background_session_factory (NullPool) so the long chunked DELETE does not
+    # hold a connection from the request-path pool and starve admin/proxy endpoints.
     tables = _validate_tables(data.tables)
     cutoff = datetime.now(UTC) - timedelta(hours=data.retention_hours)
     deleted: dict[str, int] = {}
-    for name in tables:
-        deleted[name] = await _delete_chunked(session, _TABLES[name], cutoff)
+    async with background_session_factory() as session:
+        for name in tables:
+            deleted[name] = await _delete_chunked(session, _TABLES[name], cutoff)
     return {
         "retention_hours": data.retention_hours,
         "cutoff": cutoff.isoformat(),
