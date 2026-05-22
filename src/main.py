@@ -88,6 +88,9 @@ async def lifespan(app: FastAPI):
     from src.services.load_test_scheduler import scheduler as load_test_scheduler
     await load_test_scheduler.start()
 
+    from src.services.request_logger import start_request_logger
+    await start_request_logger()
+
     # Start Telegram polling / set webhooks for all active telegram channels
     try:
         from sqlalchemy import select as sa_select
@@ -110,6 +113,9 @@ async def lifespan(app: FastAPI):
         logger.warning("Could not start Telegram lifecycle: %s", _e)
 
     yield
+
+    from src.services.request_logger import stop_request_logger
+    await stop_request_logger()
 
     await load_test_scheduler.stop()
 
