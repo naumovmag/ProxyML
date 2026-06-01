@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
     cache_ttl_seconds: int = 86400  # 24h
+    request_logs_retention_days: int = 7
+    request_logs_partition_ahead_days: int = 3
     server_base_url: str | None = None  # e.g. https://proxy-ml.example.com
     graylog_host: str | None = None
     graylog_port: int = 12201

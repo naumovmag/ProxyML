@@ -10,6 +10,9 @@ from src.db.base import Base
 
 class RequestLog(Base):
     __tablename__ = "request_logs"
+    __table_args__ = (
+        {"postgresql_partition_by": "RANGE (created_at)"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
@@ -30,6 +33,7 @@ class RequestLog(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
+        primary_key=True,
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
         index=True,

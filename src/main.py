@@ -86,10 +86,19 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Could not seed admin user: {e}")
 
     from src.services.load_test_scheduler import scheduler as load_test_scheduler
-    await load_test_scheduler.start()
+    try:
+        await load_test_scheduler.start()
+    except Exception as e:
+        logger.warning(f"Could not start load test scheduler: {e}")
 
     from src.services.request_logger import start_request_logger
     await start_request_logger()
+
+    try:
+        from src.services import request_logs_partition
+        await request_logs_partition.start()
+    except Exception as e:
+        logger.warning(f"Could not start request_logs partition scheduler: {e}")
 
     # Start Telegram polling / set webhooks for all active telegram channels
     try:
@@ -116,6 +125,12 @@ async def lifespan(app: FastAPI):
 
     from src.services.request_logger import stop_request_logger
     await stop_request_logger()
+
+    try:
+        from src.services import request_logs_partition
+        await request_logs_partition.stop()
+    except Exception:
+        pass
 
     await load_test_scheduler.stop()
 
