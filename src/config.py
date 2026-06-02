@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86400  # 24h
     request_logs_retention_days: int = 7
     request_logs_partition_ahead_days: int = 3
+    httpx_max_connections: int = 1000
+    httpx_max_keepalive_connections: int = 200
     server_base_url: str | None = None  # e.g. https://proxy-ml.example.com
     graylog_host: str | None = None
     graylog_port: int = 12201

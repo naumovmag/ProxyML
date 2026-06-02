@@ -1,5 +1,7 @@
 import httpx
 
+from src.config import settings
+
 _client: httpx.AsyncClient | None = None
 
 
@@ -17,7 +19,10 @@ async def get_http_client() -> httpx.AsyncClient:
             timeout=httpx.Timeout(None, connect=10.0),
             follow_redirects=True,
             verify=False,
-            limits=httpx.Limits(max_connections=200, max_keepalive_connections=50),
+            limits=httpx.Limits(
+                max_connections=settings.httpx_max_connections,
+                max_keepalive_connections=settings.httpx_max_keepalive_connections,
+            ),
         )
     return _client
 
