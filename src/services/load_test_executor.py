@@ -125,7 +125,9 @@ async def execute_single_test(task, service, session: AsyncSession | None = None
             duration_ms=duration_ms,
             request_size=len(content) if content else 0,
             response_size=len(response.content),
-            response_body=response.text[:2000],
+            # Body is only kept for failed runs — successful bodies are the bulk
+            # of load_test_results disk usage and are never read back.
+            response_body=response.text[:2000] if response.status_code >= 400 else None,
             error=None,
         )
     except httpx.TimeoutException:

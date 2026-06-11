@@ -12,6 +12,10 @@ engine = create_async_engine(
     pool_timeout=5,
     pool_recycle=1800,
     pool_reset_on_return="rollback",
+    # Request-path queries must never pin a pool connection for long — a single
+    # runaway query (e.g. an aggregate over a bloated table) can starve the pool
+    # and turn into cascading 500s. Long-running work belongs on background_engine.
+    connect_args={"server_settings": {"statement_timeout": "30000"}},
 )
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

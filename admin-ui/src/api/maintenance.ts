@@ -10,12 +10,25 @@ export interface CleanupPreview {
   retention_hours: number
   cutoff: string
   counts: CleanupCounts
+  approximate: Record<string, boolean>
 }
 
-export interface CleanupResult {
-  retention_hours: number
+export interface CleanupStatus {
+  status: 'idle' | 'running' | 'done' | 'error'
+  retention_hours?: number
+  cutoff?: string
+  tables?: string[]
+  deleted?: Partial<CleanupCounts>
+  dropped_partitions?: string[]
+  error?: string
+  started_at?: string
+  finished_at?: string
+}
+
+export interface CleanupStarted {
+  status: string
   cutoff: string
-  deleted: CleanupCounts
+  tables: string[]
 }
 
 export const fetchCleanupPreview = (retention_hours: number) =>
@@ -24,7 +37,10 @@ export const fetchCleanupPreview = (retention_hours: number) =>
   })
 
 export const runCleanup = (retention_hours: number, tables: string[]) =>
-  api.post<CleanupResult>('/admin/maintenance/cleanup', {
+  api.post<CleanupStarted>('/admin/maintenance/cleanup', {
     retention_hours,
     tables,
   })
+
+export const fetchCleanupStatus = () =>
+  api.get<CleanupStatus>('/admin/maintenance/cleanup-status')

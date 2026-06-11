@@ -57,4 +57,5 @@ class LoadTestResult(Base, UUIDMixin):
 
     __table_args__ = (
         Index("ix_load_test_results_task_created", "task_id", "created_at"),
+        Index("ix_load_test_results_created_at", "created_at"),
     )

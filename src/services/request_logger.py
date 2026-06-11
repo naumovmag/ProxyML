@@ -1,12 +1,14 @@
 import asyncio
 import contextlib
 import logging
+import random
 import uuid
 from collections import deque
 from typing import Any
 
 from sqlalchemy import insert
 
+from src.config import settings
 from src.db.engine import background_session_factory
 from src.models.request_log import RequestLog
 
@@ -45,6 +47,18 @@ def log_request_fire_and_forget(
 ) -> None:
     """Non-blocking: append row to in-memory buffer; background loop flushes in batches."""
     global _dropped_total
+
+    # Sampling: errors and fallbacks are always logged, successful requests
+    # only with probability request_logs_sample_rate (1.0 = log everything).
+    sample_rate = settings.request_logs_sample_rate
+    if (
+        sample_rate < 1.0
+        and status_code < 400
+        and error is None
+        and not is_fallback
+        and random.random() >= sample_rate
+    ):
+        return
 
     if len(_buffer) >= MAX_BUFFER:
         _buffer.popleft()

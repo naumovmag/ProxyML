@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Trash2, Loader2, AlertTriangle } from 'lucide-react'
 
@@ -7,7 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { fetchCleanupPreview, runCleanup, CleanupPreview } from '@/api/maintenance'
+import {
+  fetchCleanupPreview,
+  fetchCleanupStatus,
+  runCleanup,
+  CleanupPreview,
+  CleanupStatus,
+} from '@/api/maintenance'
 
 const TABLES = ['request_logs', 'load_test_results']
 
@@ -17,19 +23,73 @@ const PRESETS: { label: string; hours: number }[] = [
   { label: 'Last 30 days', hours: 24 * 30 },
 ]
 
+const POLL_INTERVAL_MS = 2000
+
 export function MaintenanceCard() {
   const [presetIdx, setPresetIdx] = useState<string>('0')
   const [customHours, setCustomHours] = useState<number>(24)
   const [preview, setPreview] = useState<CleanupPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [cleanupStatus, setCleanupStatus] = useState<CleanupStatus | null>(null)
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const isCustom = presetIdx === 'custom'
   const retentionHours = isCustom ? customHours : PRESETS[Number(presetIdx)].hours
+  const running = cleanupStatus?.status === 'running'
   const totalToDelete = preview
     ? TABLES.reduce((acc, t) => acc + (preview.counts[t] || 0), 0)
     : 0
+  const hasApproximate = preview
+    ? TABLES.some((t) => preview.approximate?.[t])
+    : false
+  const totalDeleted = cleanupStatus?.deleted
+    ? TABLES.reduce((acc, t) => acc + (cleanupStatus.deleted?.[t] || 0), 0)
+    : 0
+
+  const stopPolling = useCallback(() => {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current)
+      pollTimer.current = null
+    }
+  }, [])
+
+  const startPolling = useCallback(() => {
+    stopPolling()
+    pollTimer.current = setInterval(async () => {
+      try {
+        const { data } = await fetchCleanupStatus()
+        setCleanupStatus(data)
+        if (data.status !== 'running') {
+          stopPolling()
+          if (data.status === 'done') {
+            const total = TABLES.reduce((acc, t) => acc + (data.deleted?.[t] || 0), 0)
+            const partitions = data.dropped_partitions?.length || 0
+            toast.success(
+              `Cleanup finished: ${total.toLocaleString()} rows deleted` +
+                (partitions ? `, ${partitions} partition(s) dropped` : ''),
+            )
+            setPreview(null)
+          } else if (data.status === 'error') {
+            toast.error(`Cleanup failed: ${data.error || 'unknown error'}`)
+          }
+        }
+      } catch {
+        // transient polling error — keep trying
+      }
+    }, POLL_INTERVAL_MS)
+  }, [stopPolling])
+
+  // Pick up an already-running cleanup after a page reload
+  useEffect(() => {
+    fetchCleanupStatus()
+      .then(({ data }) => {
+        setCleanupStatus(data)
+        if (data.status === 'running') startPolling()
+      })
+      .catch(() => {})
+    return stopPolling
+  }, [startPolling, stopPolling])
 
   const loadPreview = async () => {
     if (retentionHours < 1) {
@@ -48,17 +108,20 @@ export function MaintenanceCard() {
   }
 
   const handleConfirmDelete = async () => {
-    setDeleting(true)
     try {
-      const { data } = await runCleanup(retentionHours, TABLES)
-      const total = TABLES.reduce((acc, t) => acc + (data.deleted[t] || 0), 0)
-      toast.success(`Deleted ${total.toLocaleString()} rows`)
+      await runCleanup(retentionHours, TABLES)
       setConfirmOpen(false)
-      setPreview(null)
+      setCleanupStatus({ status: 'running', deleted: {} })
+      startPolling()
+      toast.info('Cleanup started in background')
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Cleanup failed')
-    } finally {
-      setDeleting(false)
+      if (err.response?.status === 409) {
+        setConfirmOpen(false)
+        startPolling()
+        toast.info('Cleanup is already running')
+      } else {
+        toast.error(err.response?.data?.detail || 'Cleanup failed to start')
+      }
     }
   }
 
@@ -75,6 +138,8 @@ export function MaintenanceCard() {
           <p className="text-sm text-muted-foreground">
             Permanently delete request logs and load test results older than the
             selected retention window. Stats covering the kept window remain intact.
+            Old request-log partitions are dropped instantly; the rest is deleted in
+            background chunks.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={presetIdx} onValueChange={(v) => { setPresetIdx(v); setPreview(null) }}>
@@ -106,13 +171,24 @@ export function MaintenanceCard() {
             <Button
               variant="destructive"
               onClick={() => setConfirmOpen(true)}
-              disabled={!preview || totalToDelete === 0 || deleting}
+              disabled={!preview || totalToDelete === 0 || running}
             >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete now
+              {running ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              {running ? 'Cleaning...' : 'Delete now'}
             </Button>
           </div>
-          {preview && (
+          {running && (
+            <div className="text-sm border rounded p-3 bg-muted/40 space-y-1">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Cleanup running — {totalDeleted.toLocaleString()} rows deleted so far
+                {cleanupStatus?.dropped_partitions?.length
+                  ? `, ${cleanupStatus.dropped_partitions.length} partition(s) dropped`
+                  : ''}
+              </div>
+            </div>
+          )}
+          {preview && !running && (
             <div className="text-sm border rounded p-3 bg-muted/40 space-y-1">
               <div className="text-muted-foreground">
                 Cutoff: <span className="font-mono">{new Date(preview.cutoff).toLocaleString()}</span>
@@ -120,13 +196,24 @@ export function MaintenanceCard() {
               {TABLES.map((t) => (
                 <div key={t} className="flex justify-between">
                   <span>{t}</span>
-                  <span className="font-mono">{(preview.counts[t] || 0).toLocaleString()}</span>
+                  <span className="font-mono">
+                    {preview.approximate?.[t] ? '~' : ''}
+                    {(preview.counts[t] || 0).toLocaleString()}
+                  </span>
                 </div>
               ))}
               <div className="flex justify-between border-t pt-1 mt-1 font-medium">
                 <span>Total</span>
-                <span className="font-mono">{totalToDelete.toLocaleString()}</span>
+                <span className="font-mono">
+                  {hasApproximate ? '~' : ''}
+                  {totalToDelete.toLocaleString()}
+                </span>
               </div>
+              {hasApproximate && (
+                <div className="text-xs text-muted-foreground">
+                  ~ — approximate (table too large for an exact count)
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -143,20 +230,24 @@ export function MaintenanceCard() {
           <div className="space-y-2 text-sm">
             <p>
               This will permanently delete{' '}
-              <span className="font-mono font-semibold">{totalToDelete.toLocaleString()}</span>{' '}
-              row(s) from all listed tables. This action cannot be undone.
+              <span className="font-mono font-semibold">
+                {hasApproximate ? '~' : ''}
+                {totalToDelete.toLocaleString()}
+              </span>{' '}
+              row(s) from all listed tables. The cleanup runs in the background.
+              This action cannot be undone.
             </p>
             <p className="text-muted-foreground">
               Cutoff: {preview ? new Date(preview.cutoff).toLocaleString() : '—'}
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={deleting}>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
-              {deleting ? 'Deleting...' : 'Delete permanently'}
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Start cleanup
             </Button>
           </div>
         </DialogContent>
