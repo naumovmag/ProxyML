@@ -20,7 +20,14 @@ class Settings(BaseSettings):
     request_logs_partition_ahead_days: int = 3
     # Доля успешных (status < 400) запросов, сохраняемых в request_logs.
     # Ошибки и fallback-запросы логируются всегда. 1.0 = писать всё.
-    request_logs_sample_rate: float = 1.0
+    # 0.05 = писать ~5% успешных: при ~12M запросов/сутки это режет рост
+    # таблицы в ~20 раз и удерживает её далеко под лимитом диска.
+    request_logs_sample_rate: float = 0.05
+    # Жёсткий потолок числа строк в request_logs. Maintenance дропает самые
+    # старые партиции, пока оценка суммарного числа строк превышает лимит.
+    # Гранулярность — целая партиция (день), поэтому фактический потолок
+    # соблюдается до ±одной партиции (нельзя дропнуть активную партицию).
+    request_logs_max_rows: int = 10_000_000
     load_test_results_retention_days: int = 3
     httpx_max_connections: int = 1000
     httpx_max_keepalive_connections: int = 200

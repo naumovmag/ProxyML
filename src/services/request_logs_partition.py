@@ -93,6 +93,65 @@ async def drop_old_partitions(retention_days: int | None = None) -> list[str]:
     return await drop_partitions_older_than(midnight_today - timedelta(days=retention_days))
 
 
+def _valid_partition_names(names: list[str]) -> list[str]:
+    """Keep only request_logs_YYYYMMDD partitions, sorted oldest -> newest."""
+    valid = []
+    for name in names:
+        suffix = name[len(PARTITION_PREFIX):]
+        if len(suffix) == 8 and suffix.isdigit():
+            valid.append(name)
+    return sorted(valid)
+
+
+async def evict_over_row_cap(max_rows: int | None = None) -> list[str]:
+    """Drop oldest partitions until the estimated total row count is <= max_rows.
+
+    Hard ceiling that survives traffic spikes or a raised sample_rate/retention.
+    Uses pg_class.reltuples (instant planner estimate, no full scan). The two
+    newest partitions are ANALYZEd first so their estimate isn't stale from
+    heavy ongoing writes. The current/active (newest) partition is never dropped,
+    so the cap is honored to within one partition's worth of rows.
+    Returns dropped partition names (oldest first).
+    """
+    max_rows = max_rows if max_rows is not None else settings.request_logs_max_rows
+    dropped: list[str] = []
+
+    # Single join query returning each partition's relname + reltuples estimate.
+    _row_estimate_sql = text(
+        "SELECT c.relname, GREATEST(c.reltuples, 0)::bigint AS n_rows "
+        "FROM pg_class c "
+        "JOIN pg_inherits i ON i.inhrelid = c.oid "
+        "JOIN pg_class p ON p.oid = i.inhparent "
+        "WHERE p.relname = 'request_logs' AND c.relname LIKE :prefix"
+    )
+    async with background_session_factory() as session:
+        result = await session.execute(_row_estimate_sql, {"prefix": f"{PARTITION_PREFIX}%"})
+        names = _valid_partition_names([row[0] for row in result.fetchall()])
+        if len(names) <= 1:
+            return dropped
+
+        # Refresh stats on every partition — reltuples is stale (often 0) on
+        # partitions autovacuum hasn't reached yet, which would under-count the
+        # total and silently defeat the cap. ANALYZE is sample-based, not a full
+        # scan, so this stays cheap even on multi-million-row partitions.
+        for name in names:
+            await session.execute(text(f'ANALYZE "{name}"'))
+
+        result = await session.execute(_row_estimate_sql, {"prefix": f"{PARTITION_PREFIX}%"})
+        est = {name: int(n) for name, n in result.fetchall()}
+        total = sum(est.get(n, 0) for n in names)
+
+        # Drop oldest first; never touch the newest (active) partition.
+        for name in names[:-1]:
+            if total <= max_rows:
+                break
+            await session.execute(text(f'DROP TABLE IF EXISTS "{name}"'))
+            total -= est.get(name, 0)
+            dropped.append(name)
+        await session.commit()
+    return dropped
+
+
 async def cleanup_old_load_test_results(retention_days: int | None = None) -> int:
     """Chunked delete of load_test_results older than retention. Returns deleted count."""
     retention_days = (
@@ -123,9 +182,12 @@ async def run_maintenance() -> None:
         if partitioned:
             created = await ensure_partitions()
             dropped = await drop_old_partitions()
+            evicted = await evict_over_row_cap()
             logger.info(
-                "request_logs partition maintenance: ensured=%d, dropped=%d (%s)",
+                "request_logs partition maintenance: ensured=%d, dropped=%d (%s), "
+                "evicted_over_cap=%d (%s)",
                 created, len(dropped), ", ".join(dropped) if dropped else "-",
+                len(evicted), ", ".join(evicted) if evicted else "-",
             )
         else:
             logger.error(
